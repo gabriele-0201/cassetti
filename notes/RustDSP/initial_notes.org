@@ -1,0 +1,69 @@
+* Main goals:
+[ ] MQAM -> Modulazione e demodulazione in .wav + canale AWGN
+[ ] OFDM -> studiare
+[ ] CANALE -> iniziare modellazione canale
+
+
+* MINE GOALS
+[ ] Work with signals
+    [ ] CassettiBackups
+        [ ] Read and Write File (to start only files, later entire filesystems)
+        [ ] Modulation and Demodulation
+        [ ] Start creating a generic ChannelSimulator using .wav files
+    [ ] Test some backup
+    [ ] Add ErrorCorrection
+
+      | read_file            | error_correction | Modulation            | Channel         | Demodulation      | error_correction | create_file   |
+      |----------------------+------------------+-----------------------+-----------------+-------------------+------------------+---------------|
+      | Strem folders and    |                  | Theorically here      | Here will be    | Get symbols from  |                  | Reproduce the |
+      | file using buffer io |                  | should be enough      | applied noise,  | the crate, than   |                  | filesystem    |
+      |                      |                  | have different        | freq. filter,   | apply always      |                  | from the raw  |
+      |                      |                  | create to create      | amlitude filter | minimum distance? |                  | bytes         |
+      |                      |                  | symbols and having    |                 |                   |                  |               |
+      |                      |                  | the channel simulator |                 |                   |                  |               |
+      |                      |                  | to concatenate        |                 |                   |                  |               |
+      |                      |                  | symbols               |                 |                   |                  |               |
+
+
+[ ] Work with cassette tape
+    [ ] 'Play' the signal and get it into a cassette (use cpal and hound)
+    [ ] 'Record an audio' from the cassette and store it (use cpal and hound)
+    [ ] CassettiBackups
+        [ ] Add connection to the driver audio
+
+    | Read + Error + Mod | Audio Output        | Register On Cassette | Play On Cassette | Audio Input        | Demod + Error + Write |
+    |--------------------+---------------------+----------------------+------------------+--------------------+-----------------------|
+    | PREV               | Someway connect     |                      |                  | Use cpal           | PREV                  |
+    |                    | to the audio output |                      |                  | to record cassette |                       |
+    |                    | with cpal?          |                      |                  | output             |                       |
+
+
+[ ] Make tests
+    [ ] Frequency spectrum of the channel
+    [ ] Other tests ...
+
+[ ] Find Best:
+    [ ] Modulation
+    [ ] Error correction
+    [ ] Sync method
+
+[ ] Implement backup stuff
+
+* Libraries
+** dasp and fundsp
+library used to manage signals (mainly for audio)
+** cpal
+Use to connect to the audio host (throught ALSA)
+*** rodio
+wrapper around a lot of stuff that should make everything easy
+** hound
+Used to manage .wav files
+* links
+https://adventures.michaelfbryan.com/posts/audio-processing-for-dummies/#implementing-the-noise-gate-algorithm
+https://zsiciarz.github.io/24daysofrust/book/vol2/day2.html
+
+tra 100 e 10/20kHz
+
+OFDM
+
+iomegazip

@@ -1,0 +1,17 @@
+[package]
+name = "Cassette"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+Dsp = { path = "../Dsp" }
+hound = "3.5.0"
+cpal = "0.15.0"
+rand = "0.8.5"
+rand_distr = "0.4.3"
+BPSKDynamic = { path = "../SignalCodificationDynamic/Modulations/BPSKDynamic" }
+SignalCodificationDynamic = { path = "../SignalCodificationDynamic" }
+FileSystemManager = { path = "../FileSystemManager" }
+clap = {version = "4.1.13", features = ["derive"] }

@@ -1,0 +1,12 @@
+[package]
+name = "dasp_library_test"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+cpal = "0.15.0"
+dasp = "0.11.0"
+dasp_signal = "0.11.0"
+dasp_slice = "0.11.0"
+hound = "3.5.0"

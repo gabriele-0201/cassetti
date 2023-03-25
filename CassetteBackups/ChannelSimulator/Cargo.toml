@@ -1,0 +1,16 @@
+[package]
+name = "ChannelSimulator"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+plotters = "0.3.4"
+FileSystemManager = { path = "../FileSystemManager" }
+Dsp = { path = "../Dsp" }
+ModulationsManagerDynamic = { path = "../SignalCodificationDynamic/Modulations/ModulationsManagerDynamic" }
+hound = "3.5.0"
+rand = "0.8.5"
+rand_distr = "0.4.3"
+eframe = "0.21.3"

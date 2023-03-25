@@ -1,0 +1,16 @@
+* FFT
+
+** Polynomial Multiplication
+Instead of multiply each coefficient per each coeffiecient => O(n^2)
+
+Every polynomian of degrees d is represeted with d + 1 point,
+now the product of the two polynomial is equal to the the multiplication
+of the y point of the polynomials and than the points will be describe the
+resultant polynomial => O(n)
+
+Coefficint Rapresentation -> Coefficients into a vec
+Value Rapresentation -> only d + 1 points are saved
+
+** How works the conversion between Coefficient representation to Value -> *Evaluation*
+
+The most straighforword solution is select some points and evaluate those -> but we return at the initial complexity

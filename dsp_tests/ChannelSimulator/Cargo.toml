@@ -1,0 +1,9 @@
+[package]
+name = "ChannelSimulator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+plotters = "0.3.4"
+rand = "0.8.5"
+rand_distr = "0.4.3"
