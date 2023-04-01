@@ -89,15 +89,7 @@ impl ModDemod for BPSK {
             return Ok(());
         }
 
-        // This is the percentage of the signal that will be used
-        // to search for a sync signal
-        const DELTA: f32 = 0.4;
-        let sample_delta = (DELTA * self.rate() as f32) as usize;
-
         let signal = input.inner_ref_mut();
-
-        let symbol_len = self.symbols[0].len();
-        let symbol_signal = Signal::from_vec(self.symbols[0].clone(), self.rate);
 
         // FIRST IMPLEMENTATION -> MUST BE CLEVER
         // Iterate over windows of the signal (big as sync signal)
@@ -139,6 +131,7 @@ impl ModDemod for BPSK {
         // THIRD IMPLEMENTATION
         // EASIEST ONE -> internal product of EVERY windows from the beginning, if the distance is lass then
         // acceptance_delta than this is the sync symbol
+        /*
         let mut prev_distance: f32 = 0.;
         // TODO: this depend on the RATE
         let mut entered_acceptance = false;
@@ -196,9 +189,89 @@ impl ModDemod for BPSK {
                 return Ok(());
             }
             */
+
+        }
+         */
+
+        // FOURTH IMPLEMENTATION ->
+        // eval distance of each window in the delta and take the minimum one
+
+        let sync_signal = Signal::from_vec(self.get_sync(), self.rate);
+        let sync_len = sync_signal.inner_ref().len();
+        let sync_energy: f32 = sync_signal.energy();
+        let distance = |vec: &[f32]| {
+            let internal_product = sync_signal.internal_product((vec.to_vec(), self.rate).into());
+            (internal_product - sync_energy).abs()
+        };
+
+        let mut window_iter = signal.windows(self.sync.len()).enumerate();
+
+        // This is the percentage of the signal that will be used
+        // to search for a sync signal
+        const DELTA_MAX: f32 = 1.0;
+        const DELTA_STEP: f32 = 0.05;
+        let mut curr_delta = DELTA_STEP;
+        let sample_delta = (DELTA_STEP * self.rate() as f32) as usize;
+
+        //let (mut min_distance_index, min_distance) = (0, std::cell::RefCell::new(None));
+        let (mut min_distance_index, mut min_distance) = (0, None);
+
+        let mut found = false;
+
+        while !found {
+            loop
+            /*window_iter.take_while(sample_delta)*/
+            {
+                let (i_sync, p_sync) = window_iter.next().expect("Should never go to the end");
+
+                // RefCell is only used to avoid the next line:
+                // min_distance_cloned = min_distance.clone();
+                // is this usefull?? NO
+                // is this funny?? YES
+                /*
+                let mut update = |new_d| {
+                    *min_distance.clone().get_mut() = Some(new_d);
+                    min_distance_index = i_sync;
+                };
+                match (*min_distance.try_borrow().unwrap(), distance(p_sync)) {
+                    (None, d) => update(d),
+                    (Some(m_d), d) if m_d > d => update(d),
+                    _ => (),
+                }
+                */
+                match (min_distance, distance(p_sync)) {
+                    (None, d) => {
+                        min_distance = Some(d);
+                        min_distance_index = i_sync;
+                    }
+                    (Some(m_d), d) if m_d > d => {
+                        min_distance = Some(d);
+                        min_distance_index = i_sync;
+                    }
+                    _ => (),
+                };
+
+                if (i_sync + 1) % sample_delta == 0 {
+                    break;
+                }
+            }
+            // TODO
+            // If the minum distance is below the acceptance delta THAN that's the stuff
+            // if not than esaminate a new delta of the signal
+            // if delta is biggger then max_denlta than => signal not found
+
+            if matches!(min_distance, Some(m_d) if m_d < self.acceptance_sync_distance) {
+                found = true;
+            } else {
+                if curr_delta >= DELTA_MAX {
+                    return Err(DemodErr::SyncNotFound);
+                }
+                curr_delta += DELTA_STEP;
+            }
         }
 
-        Err(DemodErr::SyncNotFound)
+        signal.drain(0..min_distance_index + sync_len);
+        Ok(())
     }
 
     fn symbols_demodulation(&self, mut input: Signal) -> Result<Vec<usize>, DemodErr> {
@@ -285,6 +358,9 @@ impl ModDemod for BPSK {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // TO make the tests work DELTA_MAX must be 1.0
+    // becase the delay is REALLY bigger than the real signal itself
 
     #[test]
     fn test_sync() {

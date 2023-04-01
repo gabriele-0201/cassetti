@@ -30,6 +30,7 @@ dependencies = [
  "SignalCodificationDynamic",
  "clap",
  "cpal",
+ "eframe",
  "hound",
  "rand",
  "rand_distr",

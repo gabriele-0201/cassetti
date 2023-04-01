@@ -15,3 +15,4 @@ BPSKDynamic = { path = "../SignalCodificationDynamic/Modulations/BPSKDynamic" }
 SignalCodificationDynamic = { path = "../SignalCodificationDynamic" }
 FileSystemManager = { path = "../FileSystemManager" }
 clap = {version = "4.1.13", features = ["derive"] }
+eframe = "0.21.3"

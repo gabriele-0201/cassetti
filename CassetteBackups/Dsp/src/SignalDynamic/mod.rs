@@ -24,7 +24,7 @@ impl Signal {
     pub fn new(fun: &impl Fn(f32) -> f32, rate: usize, samples: usize) -> Self {
         let mut values = Vec::<f32>::new();
 
-        Time::apply_over_time(samples, rate, |_, v| values.push(fun(v)));
+        Time::apply_over_time(dbg!(samples), rate, |_, v| values.push(fun(v)));
         Self { values, rate }
     }
 
@@ -44,7 +44,8 @@ impl Signal {
     }
 
     pub fn get_time_with_samples(samples: usize, rate: usize) -> Signal {
-        Self::new(&|t| t, samples, rate)
+        // WHAT?!?!?!?!?! here was the opposite
+        Self::new(&|t| t, rate, samples)
     }
 
     pub fn get_time(&self) -> Signal {
@@ -80,7 +81,7 @@ impl Signal {
 
     // [f32; 2] is used to rapresent a point because egui use this representation
     // TODO: YOOO pls you have to work better with float precisions
-    pub fn get_coordinates(&self, n_symbols: Option<(usize)>) -> Vec<[f64; 2]> {
+    pub fn get_coordinates(&self, n_symbols: Option<usize>) -> Vec<[f64; 2]> {
         let coordinates = self.get_time().into_iter().zip(self.values.iter());
         match n_symbols {
             Some(samples) => coordinates
