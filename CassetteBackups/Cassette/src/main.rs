@@ -42,7 +42,7 @@ fn main() {
     println!("Prepare modulation...");
     // TODO: this information should be in the .toml file
     let sample_rate = 44100;
-    let max_amplitude = 0.3;
+    let max_amplitude = 0.1;
     let bpsk = BPSK::new(
         1000.0,      // freq
         0.3,         // symbol_period
@@ -50,16 +50,16 @@ fn main() {
         vec![
             false, true, true, false, false, true, false, false, true, true,
         ], // sync vec
-        0.2,         // sync symbol accepted distance
+        0.8,         // sync symbol accepted distance
     );
     println!("done!");
 
     match cli.action {
         Action::Play => {
-            mod_and_play(bpsk);
+            mod_and_play(bpsk, max_amplitude);
         }
         Action::Rec => {
-            record_and_demod(bpsk);
+            record_and_demod(bpsk, max_amplitude);
         }
         Action::DemodFromWav => {
             demodule_from_wav(bpsk);
@@ -83,7 +83,7 @@ fn mod_and_play<T: ModDemod>(modulation: T, max_amplitude: f32) {
     println!("done!");
 
     // compress signal based on the max supported amplitude
-    compress_signal(&mut file_signal, max_amplitude);
+    compress_signal(&modulation, &mut file_signal, max_amplitude);
 
     play(file_signal)
 }
@@ -105,7 +105,7 @@ fn play(signal: Signal) {
     println!("done!");
 }
 
-fn compress_signal<T: ModDemod>(modulation: T, sig: &mut Signal, max_amplitude: f32) {
+fn compress_signal<T: ModDemod>(modulation: &T, sig: &mut Signal, max_amplitude: f32) {
     // TODO: AHHHH Here max (the max value found in modulation) needs to be saved
     let max = modulation.max_value_in_symbols();
     // max_amplitude : max = x: v
@@ -113,7 +113,7 @@ fn compress_signal<T: ModDemod>(modulation: T, sig: &mut Signal, max_amplitude: 
     sig.apply_function(|v| *v = (*v * max_amplitude) / max);
 }
 
-fn decompress_signal<T: ModDemod>(modulation: T, sig: &mut Signal, max_amplitude: f32) {
+fn decompress_signal<T: ModDemod>(modulation: &T, sig: &mut Signal, max_amplitude: f32) {
     let max = modulation.max_value_in_symbols();
     // decompress based on max_amplitude
     // max_amplitude : max = x: v
@@ -121,8 +121,9 @@ fn decompress_signal<T: ModDemod>(modulation: T, sig: &mut Signal, max_amplitude
     sig.apply_function(|x| *x = (*x * max) / max_amplitude);
 }
 
-fn record_and_demod<T: ModDemod>(modulation: T) {
+fn record_and_demod<T: ModDemod>(modulation: T, max_amplitude: f32) {
     let mut recorded_file_signal = record(modulation.rate());
+    decompress_signal(&modulation, &mut recorded_file_signal, max_amplitude);
     demodule_from_signal(modulation, recorded_file_signal);
 }
 

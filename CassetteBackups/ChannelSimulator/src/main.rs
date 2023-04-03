@@ -82,12 +82,25 @@ fn channel_simulator(
     // NEED to adapt the signal between 0 and 1
     // (due to .wav file that accept only values between zero and one)
     // expect that this is also the minimum
+    // TODO: that was so stupid
+    /*
     let max: f32 = *moduled_signal
         .inner_ref()
         .iter()
         .enumerate()
         .max_by(|(_, a), (_, b)| a.total_cmp(b))
         .map(|(_, val)| val)
+        .ok_or("IMP find max")?;
+    */
+    // abs max
+    let max = moduled_signal
+        .inner_ref()
+        .iter()
+        .max_by(|x, y| {
+            x.abs()
+                .partial_cmp(&y.abs())
+                .expect("Impossible comparison with NaN")
+        })
         .ok_or("IMP find max")?;
     //.map_err(|_| "IMP find max")?;
 

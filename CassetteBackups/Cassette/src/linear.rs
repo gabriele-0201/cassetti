@@ -7,19 +7,20 @@ use eframe::egui::{
 pub fn find_max_amplitude(rate: usize) {
     // Create signal with different aplitudes
 
+    let freq = 1000.;
     let sec_per_amplitude: f32 = 1.;
     // amplitued step MUST be a divisor of 1
-    let amplitude_step: f32 = 0.1;
-    let n_amplituedes = 1.0 / amplitude_step;
+    let amplitude_step: f32 = 0.01;
+    let n_amplituedes = 0.05 / amplitude_step;
     assert_eq!(n_amplituedes.floor(), n_amplituedes);
     let amplitudes = Signal::new(
         &|t| {
-            ((t % sec_per_amplitude as f32) * 2. * std::f32::consts::PI * 4.).sin()
+            ((t % sec_per_amplitude as f32) * 2. * std::f32::consts::PI * freq).sin()
                 * ((t / sec_per_amplitude).floor() + 1.)
                 * amplitude_step
         },
         rate,
-        n_amplituedes as usize * sec_per_amplitude as usize * rate,
+        (n_amplituedes * sec_per_amplitude * rate as f32) as usize,
     );
     println!("Amplituedes DONE");
 
@@ -55,7 +56,7 @@ impl Gui {
     fn new(amplitudes: Signal, recorded_amplitudes: Signal) -> Self {
         // SUB sampling to make plotter faster
         // to 1000 of rate
-        let to_skip = amplitudes.rate() / 1000;
+        let to_skip = amplitudes.rate() / 10000;
         let get_points = |sig: Signal| {
             sig.get_coordinates(None)
                 .into_iter()
@@ -76,18 +77,18 @@ impl eframe::App for Gui {
             // Title
             ui.heading("10 different recorded amplitude");
 
-            dbg!(self.amplitudes.len());
+            let plot_height = ui.available_height() / 2.3;
 
             Plot::new("To record Amplitudes")
-                .view_aspect(2.0)
                 .auto_bounds_y()
+                .height(plot_height)
                 .show(ui, |plot_ui| {
                     plot_ui.line(Line::new(self.amplitudes.clone()))
                 });
 
             Plot::new("Recorded Amplitues")
-                .view_aspect(2.0)
                 .auto_bounds_y()
+                .height(plot_height)
                 .show(ui, |plot_ui| {
                     plot_ui.line(Line::new(self.recorded_amplitudes.clone()))
                 });

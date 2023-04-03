@@ -23,6 +23,29 @@ pub trait ModDemod /*<const SAMPLES: usize, const RATE: usize, const NSYMBOLS: u
     // and than used in modulation and demodulation
     fn get_sync(&self) -> Vec<f32>;
 
+    // return the abs max value that will be contained in all
+    // the possible symbols
+    fn max_value_in_symbols(&self) -> f32 {
+        let mut max = 0.;
+
+        self.symbols().into_iter().for_each(|symbol| {
+            match symbol
+                .iter()
+                .max_by(|x, y| {
+                    x.abs()
+                        .partial_cmp(&y.abs())
+                        .expect("Impossible comparison with NaN")
+                })
+                .expect("IMP find max")
+            {
+                new_max if *new_max > max => max = *new_max,
+                _ => (),
+            }
+        });
+
+        max
+    }
+
     // this method will take a signal, find a sync at the beginning
     // remove so that the demodulation now can start from the beginning
     // of the modulated signal
