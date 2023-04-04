@@ -98,13 +98,14 @@ impl Signal {
         self.values
             .iter()
             .zip(vec.values.iter())
-            .map(|(a, b)| (a * b) * base)
+            .map(|(a, b)| (a * b))
             .sum::<f32>()
+            * base
     }
 
     pub fn energy(&self) -> f32 {
         let base = 1.0 / self.rate as f32;
-        self.values.iter().map(|v| (v * v) * base).sum::<f32>()
+        self.values.iter().map(|v| (v * v)).sum::<f32>() * base
     }
 }
 

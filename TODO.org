@@ -1,0 +1,16 @@
+* TODO:
+
+** Urgent:
+[ ] SNR based on ModDemod
+    => specify something like double view
+    + mod, channel, demod (This almost never make senso to show)
+    + SNR
+[ ] Correct BPSK SNR
+
+** After Urgent
+
+[ ] Finish implement last things in QAM
+
+** low level:
+[ ] adjust ModDemod trait
+[ ] adjust Signal abstraction

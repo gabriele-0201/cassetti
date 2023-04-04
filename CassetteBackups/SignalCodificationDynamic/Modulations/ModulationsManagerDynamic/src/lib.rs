@@ -90,4 +90,7 @@ impl Modulator for Modulation {
     fn demodule(&self, input: Signal) -> Result<Vec<u8>, DemodErr> {
         self.0.demodule(input)
     }
+    fn get_average_symbols_energy(&self) -> f32 {
+        self.0.get_average_symbols_energy()
+    }
 }

@@ -14,6 +14,7 @@ pub struct BPSK {
     sync: Vec<f32>,
     //sync_symbols: Vec<u8>,
     acceptance_sync_distance: f32,
+    average_symbols_energy: f32,
 }
 
 impl BPSK {
@@ -35,6 +36,9 @@ impl BPSK {
             samples_per_symbol,
         )
         .inner();
+
+        // TEST
+        let average_symbols_energy = dbg!(Signal::from_vec(cos.clone(), rate).energy());
 
         let minus_cos = cos.iter().map(|x| x * -1.0).collect();
 
@@ -59,6 +63,7 @@ impl BPSK {
             symbol_period,
             //symbol_period: samples as f32 * (1.0 / rate as f32),
             acceptance_sync_distance,
+            average_symbols_energy,
         }
     }
 }
@@ -79,6 +84,12 @@ impl ModDemod for BPSK {
     fn symbols(&self) -> &[Symbol] {
         &self.symbols[..]
     }
+
+    /*
+    fn get_average_symbols_energy(&self) -> f32 {
+        self.average_symbols_energy
+    }
+    */
 
     fn get_sync(&self) -> Vec<f32> {
         self.sync.clone()

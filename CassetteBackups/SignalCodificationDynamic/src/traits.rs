@@ -23,6 +23,20 @@ pub trait ModDemod /*<const SAMPLES: usize, const RATE: usize, const NSYMBOLS: u
     // and than used in modulation and demodulation
     fn get_sync(&self) -> Vec<f32>;
 
+    // This method could be easily evaluated with other implemented
+    // method in the trait but is computetionally complex
+    // so should be better re-implement it
+    fn get_average_symbols_energy(&self) -> f32 {
+        let rate = self.rate();
+        let symbols = self.symbols();
+
+        symbols
+            .iter()
+            .map(|s| Signal::from_vec(s.to_vec(), rate).energy())
+            .sum::<f32>()
+            / symbols.len() as f32
+    }
+
     // return the abs max value that will be contained in all
     // the possible symbols
     fn max_value_in_symbols(&self) -> f32 {

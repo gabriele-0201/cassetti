@@ -92,3 +92,8 @@ Based on the goal decided:
 [ ] Connection between software and micro/recorder
 - Understand if developing a kernel module is the better way to create the connection 
 [ ] Develop a way to create a blob of bytes that will be stored on the cassette 
+
+STUFF
+
+http://dabeaz.blogspot.com/2010/08/using-python-to-encode-cassette.html
+http://www.dabeaz.com/py-kcs/
