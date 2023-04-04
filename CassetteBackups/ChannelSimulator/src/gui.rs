@@ -11,6 +11,10 @@ pub struct Gui {
     channel_output: Result<ChannelOutput, &'static str>,
     n_symbols_to_show: usize,
     string_sync_symbols: String,
+    snr_output: Result<SNROutput, &'static str>,
+    snr_n_bytes: usize,
+    snr_variance_repetition: f32,
+    snr_step_variance: f32,
 }
 
 impl Gui {
@@ -27,12 +31,16 @@ impl Gui {
                 symbol_period: 0.01,
                 rate: 44100,
                 freq: 100.0,
-                sync_symbols: vec![0, 1],
+                sync_symbols: vec![],
                 acceptance_sync_distance: 0.01,
             },
             channel_output: Err("Modulation TBD"),
             n_symbols_to_show: 5,
-            string_sync_symbols: String::from("0,1"),
+            string_sync_symbols: String::from(""),
+            snr_output: Err("SNR TBD"),
+            snr_n_bytes: 10,
+            snr_variance_repetition: 1.0,
+            snr_step_variance: 0.1,
         }
     }
 }
@@ -40,6 +48,7 @@ impl Gui {
 impl eframe::App for Gui {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
+            // TEST
             // Title
             ui.heading("Modulation Managment");
 
@@ -71,16 +80,9 @@ impl eframe::App for Gui {
                     );
                 });
 
-            ui.add(egui::Slider::new(&mut self.noise_variance, 0.0..=2.0).text("Noise Variance"));
-            ui.add(egui::Slider::new(&mut self.delay, 0.0..=5.0).text("Delay"));
-            ui.add(
-                egui::Slider::new(&mut self.additional_end_time, 0.0..=5.0)
-                    .text("Additional end time"),
-            );
-
             macro_rules! s_period_and_rate_slider {
                 ($s: ident, $r: ident) => {
-                    ui.add(egui::Slider::new($s, 0.0..=0.1).text("Symbol Period"));
+                    ui.add(egui::Slider::new($s, 0.0..=1.0).text("Symbol Period"));
                     // 0..100kHz
                     ui.add(egui::Slider::new($r, 0..=100000).text("Sampling Freq. - Rate"));
                 };
@@ -132,90 +134,155 @@ impl eframe::App for Gui {
                 }
             };
 
-            if ui.button("Apply new Modulation").clicked() {
-                self.channel_output = Err("Modulation TBD");
-            }
-
-            if let Err("Modulation TBD") = self.channel_output {
-                self.channel_output = channel_simulator(
-                    &self.bytes,
-                    &self.modulation,
-                    self.noise_variance,
-                    self.delay,
-                    self.additional_end_time,
+            ui.collapsing("Modulation and Demodulation Test", |ui| {
+                ui.add(
+                    egui::Slider::new(&mut self.noise_variance, 0.0..=200.0).text("Noise Variance"),
                 );
-            }
+                ui.add(egui::Slider::new(&mut self.delay, 0.0..=5.0).text("Delay"));
+                ui.add(
+                    egui::Slider::new(&mut self.additional_end_time, 0.0..=5.0)
+                        .text("Additional end time"),
+                );
 
-            match self.channel_output {
-                Ok(ref channel_output) => {
-                    ui.heading("Signal Analisys");
-                    ui.add(
-                        egui::Slider::new(&mut self.n_symbols_to_show, 0..=100)
-                            .text("Number of Symbols to show"),
-                    );
-
-                    let plot_height = ui.available_height() / 3.5;
-
-                    let samples_to_show =
-                        self.n_symbols_to_show * channel_output.samples_per_symbol;
-
-                    // PLOT moduleted signal
-                    let moduled_signal_line = Line::new(
-                        channel_output
-                            .moduled_signal
-                            .get_coordinates(Some(samples_to_show)),
-                    );
-                    ui.label("Moduled Bytes");
-                    Plot::new("Moduled Bytes")
-                        //.view_aspect(2.0)
-                        .auto_bounds_y()
-                        .height(plot_height)
-                        .show(ui, |plot_ui| plot_ui.line(moduled_signal_line));
-
-                    // PLOT moduled signal with noise
-                    let moduled_signal_with_noise_line = Line::new(
-                        channel_output
-                            .moduled_signal_after_channel
-                            .get_coordinates(Some(samples_to_show)),
-                    );
-
-                    ui.label("Moduled Bytes With Noise");
-                    Plot::new("Moduled Bytes With Noise")
-                        //.view_aspect(2.0)
-                        .auto_bounds_y()
-                        .height(plot_height)
-                        .show(ui, |plot_ui| plot_ui.line(moduled_signal_with_noise_line));
-
-                    // PLOT demoduled signal
-                    let demoduled_signal_line = Line::new(
-                        channel_output
-                            .demoduled_signal
-                            .get_coordinates(Some(samples_to_show)),
-                    );
-                    ui.label("Demoduled Bytes");
-                    Plot::new("Demoduled Bytes")
-                        //.view_aspect(2.0)
-                        .auto_bounds_y()
-                        .height(plot_height)
-                        .show(ui, |plot_ui| plot_ui.line(demoduled_signal_line));
-
-                    let errors: usize = self
-                        .bytes
-                        .iter()
-                        .zip(channel_output.demoduled_bytes.iter())
-                        .map(|(m, dm)| if m == dm { 0 } else { 1 })
-                        .sum();
-
-                    ui.label(format!(
-                        "Error percentage: {}",
-                        errors as f32 / self.bytes.len() as f32
-                    ));
+                if ui.button("Apply new Modulation").clicked() {
+                    self.channel_output = Err("Modulation TBD");
                 }
-                Err(ref err) => {
-                    ui.label(format! {"channel err: {}", err});
-                }
-            }
 
+                if let Err("Modulation TBD") = self.channel_output {
+                    self.channel_output = channel_simulator(
+                        &self.bytes,
+                        &self.modulation,
+                        self.noise_variance,
+                        self.delay,
+                        self.additional_end_time,
+                    );
+                }
+
+                match self.channel_output {
+                    Ok(ref channel_output) => {
+                        ui.heading("Signal Analisys");
+                        ui.add(
+                            egui::Slider::new(&mut self.n_symbols_to_show, 0..=100)
+                                .text("Number of Symbols to show"),
+                        );
+
+                        let plot_height = ui.available_height() / 3.5;
+
+                        let samples_to_show =
+                            self.n_symbols_to_show * channel_output.samples_per_symbol;
+
+                        // PLOT moduleted signal
+                        let moduled_signal_line = Line::new(
+                            channel_output
+                                .moduled_signal
+                                .get_coordinates(Some(samples_to_show)),
+                        );
+                        ui.label("Moduled Bytes");
+                        Plot::new("Moduled Bytes")
+                            //.view_aspect(2.0)
+                            .auto_bounds_y()
+                            .height(plot_height)
+                            .show(ui, |plot_ui| plot_ui.line(moduled_signal_line));
+
+                        // PLOT moduled signal with noise
+                        let moduled_signal_with_noise_line = Line::new(
+                            channel_output
+                                .moduled_signal_after_channel
+                                .get_coordinates(Some(samples_to_show)),
+                        );
+
+                        ui.label("Moduled Bytes With Noise");
+                        Plot::new("Moduled Bytes With Noise")
+                            //.view_aspect(2.0)
+                            .auto_bounds_y()
+                            .height(plot_height)
+                            .show(ui, |plot_ui| plot_ui.line(moduled_signal_with_noise_line));
+
+                        // PLOT demoduled signal
+                        let demoduled_signal_line = Line::new(
+                            channel_output
+                                .demoduled_signal
+                                .get_coordinates(Some(samples_to_show)),
+                        );
+                        ui.label("Demoduled Bytes");
+                        Plot::new("Demoduled Bytes")
+                            //.view_aspect(2.0)
+                            .auto_bounds_y()
+                            .height(plot_height)
+                            .show(ui, |plot_ui| plot_ui.line(demoduled_signal_line));
+
+                        let errors: usize = self
+                            .bytes
+                            .iter()
+                            .zip(channel_output.demoduled_bytes.iter())
+                            .map(|(m, dm)| {
+                                let mut sum = 0;
+                                for i in 0..7 {
+                                    sum += if (m & (1 << i)) ^ (dm & (1 << i)) == (1 << i) {
+                                        1
+                                    } else {
+                                        0
+                                    };
+                                }
+                                sum
+                            })
+                            .sum();
+
+                        ui.label(format!(
+                            "Error percentage: {}",
+                            errors as f32 / self.bytes.len() as f32
+                        ));
+                    }
+                    Err(ref err) => {
+                        ui.label(format! {"channel err: {}", err});
+                    }
+                }
+            });
+
+            ui.collapsing("SNR", |ui| {
+                ui.add(egui::Slider::new(&mut self.snr_n_bytes, 1..=10000000).text("Bytes number"));
+                ui.add(
+                    egui::Slider::new(&mut self.snr_variance_repetition, 1..=10000)
+                        .text("Upper bound variance"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.snr_step_variance, 0.0001..=0.1)
+                        .text("Variance step"),
+                );
+
+                if ui.button("Calc new SNR").clicked() {
+                    self.snr_output = Err("SNR TBD");
+                }
+
+                if let Err("SNR TBD") = self.snr_output {
+                    println!("START SNR");
+                    self.snr_output = calc_snr(
+                        &self.modulation,
+                        self.snr_n_bytes,
+                        self.snr_variance_repetition,
+                        self.snr_step_variance,
+                    );
+                    println!("END SNR");
+                }
+
+                match self.snr_output {
+                    Ok(ref snr_output) => {
+                        ui.heading("SNR");
+
+                        // PLOT moduleted signal
+                        Plot::new("Moduled Bytes")
+                            //.view_aspect(2.0)
+                            .auto_bounds_y()
+                            //.height(plot_height)
+                            .show(ui, |plot_ui| {
+                                plot_ui.line(Line::new(snr_output.points.clone()))
+                            });
+                    }
+                    Err(ref err) => {
+                        ui.label(format! {"channel err: {}", err});
+                    }
+                }
+            });
             // Button for save into file demoduled_bytes
         });
     }
