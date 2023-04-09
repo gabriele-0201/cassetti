@@ -24,7 +24,7 @@ impl Signal {
     pub fn new(fun: &impl Fn(f32) -> f32, rate: usize, samples: usize) -> Self {
         let mut values = Vec::<f32>::new();
 
-        Time::apply_over_time(dbg!(samples), rate, |_, v| values.push(fun(v)));
+        Time::apply_over_time(samples, rate, |_, v| values.push(fun(v)));
         Self { values, rate }
     }
 

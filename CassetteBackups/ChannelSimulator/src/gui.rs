@@ -13,8 +13,9 @@ pub struct Gui {
     string_sync_symbols: String,
     snr_output: Result<SNROutput, &'static str>,
     snr_n_bytes: usize,
-    snr_variance_repetition: f32,
-    snr_step_variance: f32,
+    snrdb_upper: f32,
+    snrdb_lower: f32,
+    snrdb_step: f32,
 }
 
 impl Gui {
@@ -28,19 +29,21 @@ impl Gui {
             additional_end_time: 0.0,
             // Default Modulation
             modulation: AvaiableModulation::BPSK {
-                symbol_period: 0.01,
-                rate: 44100,
-                freq: 100.0,
+                symbol_period: 1.,
+                rate: 100,
+                freq: 1.,
                 sync_symbols: vec![],
                 acceptance_sync_distance: 0.01,
+                use_expected_bytes: false,
             },
             channel_output: Err("Modulation TBD"),
             n_symbols_to_show: 5,
             string_sync_symbols: String::from(""),
             snr_output: Err("SNR TBD"),
-            snr_n_bytes: 10,
-            snr_variance_repetition: 1.0,
-            snr_step_variance: 0.1,
+            snr_n_bytes: 1000,
+            snrdb_upper: 15.,
+            snrdb_lower: 0.,
+            snrdb_step: 1.,
         }
     }
 }
@@ -63,8 +66,9 @@ impl eframe::App for Gui {
                             symbol_period: 0.01,
                             rate: 44100,
                             freq: 100.0,
-                            sync_symbols: vec![0, 1],
+                            sync_symbols: vec![],
                             acceptance_sync_distance: 0.01,
+                            use_expected_bytes: false,
                         },
                         "BPSK",
                     );
@@ -95,6 +99,7 @@ impl eframe::App for Gui {
                     ref mut freq,
                     ref mut sync_symbols,
                     ref mut acceptance_sync_distance,
+                    ref mut use_expected_bytes,
                 } => {
                     s_period_and_rate_slider!(symbol_period, rate);
                     // Frequency of the BPSK can go from 0 to 20kHz
@@ -118,6 +123,10 @@ impl eframe::App for Gui {
                         egui::Slider::new(acceptance_sync_distance, 0.0..=0.3)
                             .text("Sync signal distance acceptance"),
                     );
+                    ui.add(egui::Checkbox::new(
+                        use_expected_bytes,
+                        "Number expected bytes",
+                    ));
                 }
                 AvaiableModulation::MQAM {
                     ref mut symbol_period,
@@ -216,21 +225,15 @@ impl eframe::App for Gui {
                             .iter()
                             .zip(channel_output.demoduled_bytes.iter())
                             .map(|(m, dm)| {
-                                let mut sum = 0;
-                                for i in 0..7 {
-                                    sum += if (m & (1 << i)) ^ (dm & (1 << i)) == (1 << i) {
-                                        1
-                                    } else {
-                                        0
-                                    };
-                                }
-                                sum
+                                let (diff, mut errs) = (m ^ dm, 0);
+                                (0..7).for_each(|i| errs += ((diff & (1 << i)) >> i) as usize);
+                                errs
                             })
                             .sum();
 
                         ui.label(format!(
                             "Error percentage: {}",
-                            errors as f32 / self.bytes.len() as f32
+                            errors as f32 / (self.bytes.len() * 8) as f32
                         ));
                     }
                     Err(ref err) => {
@@ -242,13 +245,14 @@ impl eframe::App for Gui {
             ui.collapsing("SNR", |ui| {
                 ui.add(egui::Slider::new(&mut self.snr_n_bytes, 1..=10000000).text("Bytes number"));
                 ui.add(
-                    egui::Slider::new(&mut self.snr_variance_repetition, 1..=10000)
-                        .text("Upper bound variance"),
+                    // TODO: could be usefull to print also the relative Es and Variance near the selected SNR
+                    egui::Slider::new(&mut self.snrdb_upper, 0.0..=50.)
+                        .text(format!("Upper bound SNR (inclusive)")),
                 );
                 ui.add(
-                    egui::Slider::new(&mut self.snr_step_variance, 0.0001..=0.1)
-                        .text("Variance step"),
+                    egui::Slider::new(&mut self.snrdb_lower, -50.0..=0.0).text("Lower bound SNR"),
                 );
+                ui.add(egui::Slider::new(&mut self.snrdb_step, 0.001..=10.).text("SNR step"));
 
                 if ui.button("Calc new SNR").clicked() {
                     self.snr_output = Err("SNR TBD");
@@ -259,8 +263,9 @@ impl eframe::App for Gui {
                     self.snr_output = calc_snr(
                         &self.modulation,
                         self.snr_n_bytes,
-                        self.snr_variance_repetition,
-                        self.snr_step_variance,
+                        self.snrdb_lower,
+                        self.snrdb_upper,
+                        self.snrdb_step,
                     );
                     println!("END SNR");
                 }

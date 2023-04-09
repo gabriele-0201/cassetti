@@ -17,6 +17,7 @@ pub enum AvaiableModulation {
         // This will be translated to bool, 0 => false, _ => true
         sync_symbols: Vec<u8>,
         acceptance_sync_distance: f32,
+        use_expected_bytes: bool,
     },
     MQAM {
         symbol_period: f32,
@@ -57,6 +58,7 @@ impl TryFrom<AvaiableModulation> for Modulation {
                 freq,
                 sync_symbols,
                 acceptance_sync_distance,
+                use_expected_bytes,
             } => Box::new(BPSK::new(
                 freq,
                 symbol_period,
@@ -66,6 +68,7 @@ impl TryFrom<AvaiableModulation> for Modulation {
                     .map(|v| if *v == 0 { false } else { true })
                     .collect(),
                 acceptance_sync_distance,
+                use_expected_bytes,
             )),
             AvaiableModulation::MQAM {
                 symbol_period,

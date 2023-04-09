@@ -13,6 +13,7 @@ pub enum DemodErr {
     // the initial number specified a number of bytes
     // that is bigger than what the signal could contain
     SmallerThanExpected,
+    Other(String),
 }
 
 // This struct will be used to iterate over the symbols
@@ -138,6 +139,7 @@ pub struct RawBytes<'a> {
 // For now I will do a simply method
 
 // TODO: I do not like this
+// TODO: update the return type to DemodErr
 pub fn collect_bytes_from_raw_bytes(
     raw_bytes: Vec<usize>,
     n_bit: u8,

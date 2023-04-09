@@ -1,10 +1,16 @@
 * TODO:
 
 ** Urgent:
-[ ] SNR based on ModDemod
+[ ] ADJUST gui
+    [x] optional expected bytes
+    [x] remove default sync
+    [ ] little gui to specify witch type of symbols are accepted
+    [ ] define random symbol
+[x] SNR based on ModDemod
     => specify something like double view
     + mod, channel, demod (This almost never make senso to show)
     + SNR
+[ ] SNRdB bound
 [ ] Correct BPSK SNR
 
 ** After Urgent

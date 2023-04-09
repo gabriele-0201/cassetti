@@ -17,7 +17,7 @@ fn main() {
     println!("For now NO input is requested to yuo because I'm lazy");
 
     // Read the File
-    let bytes = FileSystemManager::read().expect("Impossible read");
+    let bytes = FileSystemManager::read("in_test_2_bytes.org").expect("Impossible read");
 
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(320.0, 240.0)),
@@ -25,7 +25,7 @@ fn main() {
     };
 
     eframe::run_native(
-        "My egui App",
+        "Channel Simulator",
         options,
         Box::new(|_cc| Box::new(gui::Gui::new(bytes))),
     )
@@ -77,22 +77,19 @@ fn channel_simulator(
         &mut moduled_signal_after_channel,
         additional_end_time,
     );
-    channel_simulation::add_noise_awgn(&mut moduled_signal_after_channel, noise_variance);
+    channel_simulation::add_noise_awgn(
+        &mut moduled_signal_after_channel,
+        // multily by the rate to obtain the corret variance to apply
+        // to every symbol
+        noise_variance * modulation.rate() as f32,
+    );
+
+    // FOR NOW AVOID SAVE INTO WAV FILE
+    /*
 
     // NEED to adapt the signal between 0 and 1
     // (due to .wav file that accept only values between zero and one)
     // expect that this is also the minimum
-    // TODO: that was so stupid
-    /*
-    let max: f32 = *moduled_signal
-        .inner_ref()
-        .iter()
-        .enumerate()
-        .max_by(|(_, a), (_, b)| a.total_cmp(b))
-        .map(|(_, val)| val)
-        .ok_or("IMP find max")?;
-    */
-    // abs max
     let max = *moduled_signal
         .inner_ref()
         .iter()
@@ -156,20 +153,16 @@ fn channel_simulator(
 
     // BEFORE demoduling the signal must be adjusted
     moduled_bytes_from_wav.apply_function(|v| *v = *v * max);
-
-    // LOL => That's not totally true
-    /*
-    assert_eq!(
-        moduled_signal_after_channel.clone().inner(),
-        moduled_bytes_from_wav.clone().inner()
-    );
     */
 
     // Demodule
     // TODO: is really ok to demodule from the .wav file?
     let demoduled_bytes = modulation
-        .demodule(moduled_bytes_from_wav)
-        .map_err(|_| "IMP demodule")?;
+        .demodule(
+            /*moduled_bytes_from_wav*/ moduled_signal_after_channel.clone(),
+        )
+        // TODO print this error
+        .map_err(|_err| "IMP demodule {:?}")?;
 
     // Resolve error correction
 
@@ -206,9 +199,10 @@ struct SNROutput {
 //
 fn calc_snr(
     modulation: &AvaiableModulation,
-    b_bytes_to_send: usize,
-    repetition_variance: usize,
-    step_variance: f32,
+    n_bytes_to_send: usize,
+    snrdb_lower: f32,
+    snrdb_upper: f32,
+    snrdb_step: f32,
 ) -> Result<SNROutput, &'static str> {
     let mut snr_points = vec![];
 
@@ -216,40 +210,48 @@ fn calc_snr(
     let modulation =
         Modulation::try_from(modulation.clone()).map_err(|_| "IMP create modulation")?;
 
-    let average_symbols_energy = dbg!(modulation.get_average_symbols_energy() as f64);
+    let average_symbols_energy = modulation.get_average_symbols_energy() as f64;
 
     // Spawn N random BYTES
     // TODO: check that there are no problem with the modulation of the stuff -> should be implemented PADDING
 
-    let bytes = get_bytes(b_bytes_to_send);
-    let total_bit_emitted = (b_bytes_to_send * 8) as f64;
+    let bytes = get_bytes(n_bytes_to_send);
+    let total_bit_emitted = (n_bytes_to_send * 8) as f64;
     // Module
     let mut moduled_signal = modulation.module(&bytes).map_err(|_| "IMP modulation")?;
 
-    let mut variance = average_symbols_energy as f32;
-    for i_variance in 1..repetition_variance {
-        variance += step_variance;
-
+    let mut snrdb = snrdb_lower;
+    while snrdb <= snrdb_upper {
         let mut to_demodule_signal = moduled_signal.clone();
-        channel_simulation::add_noise_awgn(&mut to_demodule_signal, variance);
+
+        // snrdb = 10*log_10(Es / N0) = 10*log_10(Es / (2 * variance))
+        let variance: f64 = average_symbols_energy / (2. * 10.0_f64.powf(snrdb as f64 / 10.));
+        // multiply the variance by the rate to optain the correct variance
+        // to apply to every symbol of the signal
+        let sig_variance = variance as f32 * modulation.rate() as f32;
+
+        channel_simulation::add_noise_awgn(&mut to_demodule_signal, sig_variance);
 
         let demoduled_bytes = modulation.demodule(to_demodule_signal).map_err(|_| {
-            println!("variance level: {}", variance);
+            println!("variance level IMP demodule: {}", variance);
             "IMP demodule, probably due to sync not found"
         })?;
 
-        let errors: usize = bytes
+        let errors: f64 = bytes
             .iter()
             .zip(demoduled_bytes.iter())
-            .map(|(m, dm)| if m == dm { 0 } else { 1 })
-            .sum();
+            .map(|(m, dm)| {
+                let (diff, mut errs) = (m ^ dm, 0);
+                (0..7).for_each(|i| errs += ((diff & (1 << i)) >> i) as usize);
+                errs
+            })
+            .sum::<usize>() as f64;
 
-        let error_percentage = dbg!(errors as f64 / total_bit_emitted);
+        let error_percentage = errors / total_bit_emitted;
 
-        snr_points.push([
-            20. * (average_symbols_energy / variance as f64).log10(),
-            error_percentage.log10(),
-        ]);
+        snr_points.push([dbg!(snrdb as f64), dbg!(dbg!(error_percentage).log10())]);
+
+        snrdb += snrdb_step;
     }
 
     Ok(SNROutput { points: snr_points })
@@ -267,3 +269,9 @@ fn get_bytes(n_bytes: usize) -> Vec<u8> {
 
     res
 }
+
+/*
+fn y_log_scale(val: f64, core::ops::RangeInclusive<f64>) -> String {
+
+}
+*/

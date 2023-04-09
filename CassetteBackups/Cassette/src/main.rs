@@ -42,7 +42,7 @@ fn main() {
     println!("Prepare modulation...");
     // TODO: this information should be in the .toml file
     let sample_rate = 44100;
-    let max_amplitude = 0.1;
+    let max_amplitude = 1.0;
     let bpsk = BPSK::new(
         1000.0,      // freq
         0.3,         // symbol_period
@@ -51,6 +51,7 @@ fn main() {
             false, true, true, false, false, true, false, false, true, true,
         ], // sync vec
         0.8,         // sync symbol accepted distance
+        true,
     );
     println!("done!");
 

@@ -28,7 +28,6 @@ impl MQAM {
         rate: usize,
         n_symbols: usize, /*, h: Vec<f32>*/
     ) -> Self {
-        // TODO: this should be checked
         let samples_per_symbol = (symbol_period * rate as f32) as usize;
 
         let L = match (n_symbols as f32).sqrt() {
@@ -106,14 +105,14 @@ impl MQAM {
                 let index_symbol =
                     ((gray_vec[j as usize] << bit_per_gray) | gray_vec[i as usize]) as usize;
 
-                print!("{:6b} ", index_symbol);
+                //print!("{:6b} ", index_symbol);
                 symbols[index_symbol] = signal.inner();
                 indeces_to_symbols[(L - 1 - i) as usize][j as usize] = index_symbol;
             }
-            println!("");
+            //println!("");
         }
 
-        println!("{:?}", indeces_to_symbols);
+        //println!("{:?}", indeces_to_symbols);
 
         let h_multiplier = (2.0 / h_signal_energy).sqrt();
 
@@ -168,11 +167,18 @@ impl ModDemod for MQAM {
     }
 
     fn get_sync(&self) -> Vec<f32> {
-        todo!()
+        println!("NO sync supported on QAM yet");
+        vec![]
     }
 
     fn sync(&self, input: &mut Signal) -> Result<(), DemodErr> {
-        todo!()
+        println!("NO sync supported on QAM yet");
+        Ok(())
+    }
+
+    fn use_expected_bytes(&self) -> bool {
+        println!("No expected bytes supported yet");
+        false
     }
 
     fn symbols_demodulation(&self, input: Signal) -> Result<Vec<usize>, DemodErr> {

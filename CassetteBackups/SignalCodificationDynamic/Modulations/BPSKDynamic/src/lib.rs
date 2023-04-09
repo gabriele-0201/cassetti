@@ -14,7 +14,8 @@ pub struct BPSK {
     sync: Vec<f32>,
     //sync_symbols: Vec<u8>,
     acceptance_sync_distance: f32,
-    average_symbols_energy: f32,
+    htx_energy: f32,
+    use_expected_bytes: bool,
 }
 
 impl BPSK {
@@ -26,9 +27,12 @@ impl BPSK {
         rate: usize,
         sync_symbols: Vec<bool>,
         acceptance_sync_distance: f32,
+        use_expected_bytes: bool,
     ) -> Self {
         // TODO: this should be checked
         let samples_per_symbol = (symbol_period * rate as f32) as usize;
+
+        // here Htx is a rect(t/symbol_period)
 
         let cos: Symbol = Signal::new(
             &|t| (t * 2.0 * std::f32::consts::PI * freq).cos(),
@@ -37,14 +41,15 @@ impl BPSK {
         )
         .inner();
 
-        // TEST
-        let average_symbols_energy = dbg!(Signal::from_vec(cos.clone(), rate).energy());
+        // TODO: to update with htx.energy() when a signal as Htx will be accepted
+        let htx_energy = 1.;
 
         let minus_cos = cos.iter().map(|x| x * -1.0).collect();
 
         let symbols = vec![cos, minus_cos];
 
-        let (sync_symbols, sync): (Vec<u8>, Vec<Vec<f32>>) = sync_symbols
+        // TODO: why here I'm returing a tuple?
+        let (_sync_symbols, sync): (Vec<u8>, Vec<Vec<f32>>) = sync_symbols
             .into_iter()
             .map(|symbol| {
                 let symbol: usize = if symbol { 1 } else { 0 };
@@ -52,7 +57,6 @@ impl BPSK {
             })
             .unzip();
         let sync = sync.concat();
-        // Calc the energy for those sygnals is useless... the mean of the two will be alwasy zero
 
         Self {
             rate,
@@ -63,7 +67,8 @@ impl BPSK {
             symbol_period,
             //symbol_period: samples as f32 * (1.0 / rate as f32),
             acceptance_sync_distance,
-            average_symbols_energy,
+            htx_energy,
+            use_expected_bytes,
         }
     }
 }
@@ -85,11 +90,13 @@ impl ModDemod for BPSK {
         &self.symbols[..]
     }
 
-    /*
-    fn get_average_symbols_energy(&self) -> f32 {
-        self.average_symbols_energy
+    fn use_expected_bytes(&self) -> bool {
+        self.use_expected_bytes
     }
-    */
+
+    fn get_average_symbols_energy(&self) -> f32 {
+        self.htx_energy / 2.
+    }
 
     fn get_sync(&self) -> Vec<f32> {
         self.sync.clone()
@@ -287,8 +294,6 @@ impl ModDemod for BPSK {
 
     fn symbols_demodulation(&self, mut input: Signal) -> Result<Vec<usize>, DemodErr> {
         // based use for the calc of the integral (Reinmann)
-        // TODO: REALLY WHY? I'm not understanding this
-        let base = self.symbol_period / self.samples_per_symbol as f32;
 
         //println!("len prev sync: {}", input.inner_ref().len());
 
@@ -300,57 +305,63 @@ impl ModDemod for BPSK {
         // NOT use iterator but use something like drain to consume the first 4 bytes
 
         let mut input = input.inner();
-        let base = Signal::from_vec(self.symbols[0].clone().to_vec(), self.rate);
+        let cos_mutliplier = (2.0 / self.htx_energy).sqrt();
 
-        // samples to take for the initial number
-        let mut samples_to_take = (4.0 * 8.0 * self.samples_per_symbol as f32) as usize;
+        /* PRINT SOME TESTS STUFF
+        println!("H_tx energy: {}", self.htx_energy); // should be equal to the symbol period
 
-        let expected_num_samples: Vec<f32> = input.drain(..samples_to_take).collect();
+        // ensure that the energy of the symbols are +-(htx_energy / 2).sqrt() = +-0.7
+        println!(
+            "cos energy: {}",
+            Signal::from_vec(self.symbols[0].to_vec(), self.rate).energy()
+        );
+        println!(
+            "minus cos energy: {}",
+            Signal::from_vec(self.symbols[1].to_vec(), self.rate).energy()
+        );
 
-        // demodule the first 4 bytes
-        /*
-        let num_expected_bytes: usize = expected_num_samples
-            .chunks(self.samples_per_symbol)
-            .enumerate()
-            .map(|(index, raw_symbol)| {
-                dbg!(
-                    (1 << index)
-                        * if base.internal_product((raw_symbol.to_vec(), self.rate).into()) > 0.0 {
-                            0
-                        } else {
-                            1
-                        }
-                )
-            })
-            // Here I have to convert result of the internal product to the u32 value
-            .sum();
+        println!("cos multiplier: {}", cos_mutliplier);
         */
 
-        let mut num_expected_bytes = 0;
-        let mut index = 7i8;
+        let base = Signal::new_with_indeces(
+            &|i, _t| self.symbols[0][i] * cos_mutliplier,
+            self.rate,
+            self.samples_per_symbol,
+        );
 
-        for (index_b, raw_symbol) in expected_num_samples
-            .chunks(self.samples_per_symbol)
-            .enumerate()
-        {
-            num_expected_bytes |=
-                (if base.internal_product((raw_symbol.to_vec(), self.rate).into()) > 0.0 {
-                    0
-                } else {
-                    1
-                }) << (index as usize + index_b / 8);
-            index = (index - 1).rem_euclid(8);
+        let mut symbols_to_take = input.len();
+
+        // samples to take for the initial number
+        if self.use_expected_bytes {
+            let mut samples_to_take = (4.0 * 8.0 * self.samples_per_symbol as f32) as usize;
+
+            let expected_num_samples: Vec<f32> = input.drain(..samples_to_take).collect();
+
+            let mut num_expected_bytes = 0;
+            let mut index = 7i8;
+
+            for (index_b, raw_symbol) in expected_num_samples
+                .chunks(self.samples_per_symbol)
+                .enumerate()
+            {
+                num_expected_bytes |=
+                    (if base.internal_product((raw_symbol.to_vec(), self.rate).into()) > 0.0 {
+                        0
+                    } else {
+                        1
+                    }) << (index as usize + index_b / 8);
+                index = (index - 1).rem_euclid(8);
+            }
+
+            // sample to take to demodule the signal
+            symbols_to_take = num_expected_bytes * 8;
+            samples_to_take = symbols_to_take * self.samples_per_symbol;
+
+            if samples_to_take > input.len() {
+                return Err(DemodErr::SmallerThanExpected);
+            }
         }
 
-        // sample to take to demodule the signal
-        let symbols_to_take = num_expected_bytes * 8;
-        samples_to_take = symbols_to_take * self.samples_per_symbol;
-
-        if samples_to_take > input.len() {
-            return Err(DemodErr::SmallerThanExpected);
-        }
-
-        // TODO: implement internal product between two signals
         let raw: Vec<f32> = input
             .chunks(self.samples_per_symbol)
             .take(symbols_to_take)

@@ -8,9 +8,7 @@ pub struct FileSystemManager;
 impl FileSystemManager {
     // For now NO stuff will be specified
     // hardcoded input and output name
-    pub fn read() -> Result<Vec<u8>, ()> {
-        let in_file_name = "in_test.org";
-
+    pub fn read(in_file_name: &str) -> Result<Vec<u8>, ()> {
         let f = File::open(in_file_name).map_err(|_| ())?;
 
         Ok(BufReader::new(f)

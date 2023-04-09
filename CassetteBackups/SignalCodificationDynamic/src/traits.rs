@@ -4,23 +4,21 @@ use Dsp::SignalDynamic::Signal;
 
 pub type Symbol = Vec<f32>;
 
-pub trait ModDemod /*<const SAMPLES: usize, const RATE: usize, const NSYMBOLS: usize>*/ {
-    // This method is better to override using an intern value
-    // evaluated at instantiation time
-    // The number of bit per simbol will be never bigger than 256
+pub trait ModDemod {
+    // The number of bit per symbol
+    // Should be never bigger than 256
     fn bit_per_symbol(&self) -> u8;
 
+    // Rate of the modulation
     fn rate(&self) -> usize;
 
+    // Number of samples per symbol
     fn samples_per_symbol(&self) -> usize;
 
-    // TODO Idk if this will work
-    //fn symbols(&self) -> &[Symbol<SAMPLES, RATE>/*; NSYMBOLS*/];
+    // Slice over the symbol used by the modulation
     fn symbols(&self) -> &[Symbol];
 
-    // Every modulation will have some symbols to properly sync
-    // this signal will be created at the creation of the modulation
-    // and than used in modulation and demodulation
+    // Every modulation could have some symbols to properly sync the signal
     fn get_sync(&self) -> Vec<f32>;
 
     // This method could be easily evaluated with other implemented
@@ -39,6 +37,9 @@ pub trait ModDemod /*<const SAMPLES: usize, const RATE: usize, const NSYMBOLS: u
 
     // return the abs max value that will be contained in all
     // the possible symbols
+    // This method could be easily overwritten due to the fact that
+    // max value in symbols is something static and can be evaluated only one,
+    // at the creation of the modulation
     fn max_value_in_symbols(&self) -> f32 {
         let mut max = 0.;
 
@@ -65,26 +66,31 @@ pub trait ModDemod /*<const SAMPLES: usize, const RATE: usize, const NSYMBOLS: u
     // of the modulated signal
     fn sync(&self, input: &mut Signal) -> Result<(), DemodErr>;
 
-    // TODO: work better with bit-vec and iterators,
-    // could be used the collect of reference approach
-    //
+    // this method specify if the modulation is using or not
+    // the tecnique of inserting at the beginning of the bytes the number of
+    // bytes that will be demodulated, this is really usefull on demodulation
+    fn use_expected_bytes(&self) -> bool;
+
     // The return is a SignalPieceVec with the same rate of th
     fn module(&self, input: &Vec<u8>) -> Result<Signal, ModErr> {
-        // ADD at the beginnig a u32 to specify the amount of bytes that
-        // will be modulated, during the demodulation this value will be used
-        // to demodule a specific amount of the remening signal
+        // worse thing ever but for now ok...
+        let mut input = input.clone();
+        if self.use_expected_bytes() {
+            // ADD at the beginnig a u32 to specify the amount of bytes that
+            // will be modulated, during the demodulation this value will be used
+            // to demodule a specific amount of the remening signal
 
-        // CONVETION: I will push the byte in a little endian order
-        // so the first byte to appear in the signal is the least significant
-        let num_bytes: u32 = dbg!(input.len() as u32);
-        let input = [num_bytes.to_le_bytes().to_vec(), input.clone()]
-            .concat()
-            .to_vec();
+            // CONVETION: I will push the byte in a little endian order
+            // so the first byte to appear in the signal is the least significant
+            let num_bytes: u32 = dbg!(input.len() as u32);
+            input = [num_bytes.to_le_bytes().to_vec(), input.clone()]
+                .concat()
+                .to_vec();
+        }
 
         // We have N symbols and the approach is ONLY for now:
         // + we take the input and split it in groups on log2(NSYMBOLS)
         // + convert every group in an integer and use that as index in the symbol's array
-
         let raw_symbols = RawSymbols::try_get_symbols(&input, self.bit_per_symbol())
             .map_err(|_| ModErr::InvalidInput)?;
 
@@ -95,6 +101,8 @@ pub trait ModDemod /*<const SAMPLES: usize, const RATE: usize, const NSYMBOLS: u
             .map(|n_symbol| self.symbols()[n_symbol].clone())
             .collect::<Vec<Vec<f32>>>()
             .concat();
+
+        // TODO: decide if is better to make MORE explicit the fact that the sync is not used
 
         // A new function is required, sync
         // this will return the symbols that are needed to add
@@ -121,6 +129,6 @@ pub trait ModDemod /*<const SAMPLES: usize, const RATE: usize, const NSYMBOLS: u
         let raw_bytes = self.symbols_demodulation(input)?;
 
         collect_bytes_from_raw_bytes(raw_bytes, self.bit_per_symbol())
-            .map_err(|_| DemodErr::InvalidInput)
+            .map_err(|err| DemodErr::Other(err.to_string()))
     }
 }
