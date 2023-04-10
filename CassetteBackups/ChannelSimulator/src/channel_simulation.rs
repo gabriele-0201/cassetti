@@ -1,10 +1,10 @@
 use Dsp::SignalDynamic::Signal;
 
-pub fn add_noise_awgn(signal: &mut Signal, variance: f32) {
+pub fn add_noise_awgn(signal: &mut Signal, variance: f64) {
     use rand_distr::{Distribution, Normal};
     let normal = Normal::new(0.0, variance.sqrt()).unwrap();
 
-    signal.apply_function(|v| *v += normal.sample(&mut rand::thread_rng()));
+    signal.apply_function(|v| *v += normal.sample(&mut rand::thread_rng()) as f32);
 }
 
 pub fn add_delay(signal: &mut Signal, delay: f32) {

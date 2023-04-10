@@ -40,8 +40,8 @@ impl Gui {
             n_symbols_to_show: 5,
             string_sync_symbols: String::from(""),
             snr_output: Err("SNR TBD"),
-            snr_n_bytes: 1000,
-            snrdb_upper: 15.,
+            snr_n_bytes: 10000,
+            snrdb_upper: 0.,
             snrdb_lower: 0.,
             snrdb_step: 1.,
         }

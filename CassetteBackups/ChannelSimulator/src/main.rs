@@ -81,7 +81,7 @@ fn channel_simulator(
         &mut moduled_signal_after_channel,
         // multily by the rate to obtain the corret variance to apply
         // to every symbol
-        noise_variance * modulation.rate() as f32,
+        noise_variance as f64 * modulation.rate() as f64,
     );
 
     // FOR NOW AVOID SAVE INTO WAV FILE
@@ -218,17 +218,24 @@ fn calc_snr(
     let bytes = get_bytes(n_bytes_to_send);
     let total_bit_emitted = (n_bytes_to_send * 8) as f64;
     // Module
-    let mut moduled_signal = modulation.module(&bytes).map_err(|_| "IMP modulation")?;
+    let moduled_signal = modulation.module(&bytes).map_err(|_| "IMP modulation")?;
 
     let mut snrdb = snrdb_lower;
     while snrdb <= snrdb_upper {
         let mut to_demodule_signal = moduled_signal.clone();
 
         // snrdb = 10*log_10(Es / N0) = 10*log_10(Es / (2 * variance))
-        let variance: f64 = average_symbols_energy / (2. * 10.0_f64.powf(snrdb as f64 / 10.));
+        let variance: f64 = average_symbols_energy / (2. * 10_f64.powf(snrdb as f64 / 10.));
+
+        // TEST
+        let snrdb_test = 10. * (average_symbols_energy / (2. * dbg!(variance))).log10();
+        //let snrdb_test = 10. * (average_symbols_energy / (2. * variance)).log10();
+        assert_eq!(snrdb as f64, snrdb_test.round());
+        // END TEST
+
         // multiply the variance by the rate to optain the correct variance
         // to apply to every symbol of the signal
-        let sig_variance = variance as f32 * modulation.rate() as f32;
+        let sig_variance = variance * dbg!(modulation.rate()) as f64;
 
         channel_simulation::add_noise_awgn(&mut to_demodule_signal, sig_variance);
 
