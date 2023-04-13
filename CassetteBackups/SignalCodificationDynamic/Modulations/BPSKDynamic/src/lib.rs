@@ -16,6 +16,7 @@ pub struct BPSK {
     acceptance_sync_distance: f32,
     htx: Signal,
     base: Signal,
+    base_energy: f32,
     htx_energy: f32,
     use_expected_bytes: bool,
 }
@@ -31,7 +32,6 @@ impl BPSK {
         acceptance_sync_distance: f32,
         use_expected_bytes: bool,
     ) -> Self {
-        // TODO: this should be checked
         let samples_per_symbol = (symbol_period * rate as f32) as usize;
 
         // TODO: accept this in the method's arguments
@@ -52,26 +52,27 @@ impl BPSK {
 
         let symbols = vec![cos, minus_cos];
 
-        let cos_mutliplier = (2.0 / htx_energy).sqrt();
-        println!("cos multiplier: {}", cos_mutliplier);
+        let base_mutliplier = (2.0 / htx_energy).sqrt();
+        println!("base multiplier: {}", base_mutliplier);
         let base = Signal::new_with_indeces(
             &|i, t| {
-                cos_mutliplier * htx.inner_ref()[i] * (t * 2.0 * std::f32::consts::PI * freq).cos()
-            }, /*self.symbols[0][i]*/
+                base_mutliplier * htx.inner_ref()[i] * (t * 2.0 * std::f32::consts::PI * freq).cos()
+            },
             rate,
             samples_per_symbol,
         );
+        let base_energy = base.energy();
 
         println!("H_tx energy: {}", htx_energy); // should be equal to the symbol period
-        println!("Base energy: {}, should be Htx_energy / 2", base.energy()); // should be equal to the symbol period
+        println!("Base energy: {}, should be Htx_energy / 2", base_energy); // should be equal to the symbol period
 
         // ensure that the energy of the symbols are +-(htx_energy / 2).sqrt() = +-0.7
         println!(
-            "cos energy: {}",
+            "cos energy: {}, should be (Eh / 2).sqrt()",
             Signal::from_vec(symbols[0].to_vec(), rate).energy()
         );
         println!(
-            "minus cos energy: {}",
+            "minus cos energy: {}, should be -(Eh / 2).sqrt()",
             Signal::from_vec(symbols[1].to_vec(), rate).energy()
         );
 
@@ -98,6 +99,7 @@ impl BPSK {
             htx,
             use_expected_bytes,
             base,
+            base_energy,
         }
     }
 }
@@ -124,7 +126,7 @@ impl ModDemod for BPSK {
     }
 
     fn get_average_symbols_energy(&self) -> f32 {
-        self.htx_energy / 2.
+        self.base_energy
     }
 
     fn get_sync(&self) -> Vec<f32> {
@@ -322,15 +324,10 @@ impl ModDemod for BPSK {
     }
 
     fn symbols_demodulation(&self, mut input: Signal) -> Result<Vec<usize>, DemodErr> {
-        // based use for the calc of the integral (Reinmann)
-
-        //println!("len prev sync: {}", input.inner_ref().len());
-
         // SYNC the signal
         self.sync(&mut input)?;
 
         //println!("len after sync: {}", input.inner_ref().len());
-
         let mut input = input.inner();
 
         let mut symbols_to_take = input.len();
@@ -370,18 +367,20 @@ impl ModDemod for BPSK {
             }
         }
 
-        let raw: Vec<f32> = input
+        let raw_bytes: Vec<usize> = input
             .chunks(self.samples_per_symbol)
             .take(symbols_to_take)
             .map(|raw_symbol| {
-                self.base
+                if self
+                    .base
                     .internal_product((raw_symbol.to_vec(), self.rate).into())
+                    >= 0.0
+                {
+                    0usize
+                } else {
+                    1usize
+                }
             })
-            .collect();
-
-        let raw_bytes = raw
-            .iter()
-            .map(|r| if *r >= 0.0 { 0usize } else { 1usize })
             .collect();
 
         Ok(raw_bytes)

@@ -105,7 +105,7 @@ impl Signal {
 
     pub fn energy(&self) -> f32 {
         let base = 1.0 / self.rate as f32;
-        self.values.iter().map(|v| (v * v)).sum::<f32>() * base
+        self.values.iter().map(|v| v * v).sum::<f32>() * base
     }
 }
 

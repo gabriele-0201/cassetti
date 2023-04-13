@@ -84,6 +84,9 @@ impl Modulator for Modulation {
     fn rate(&self) -> usize {
         self.0.rate()
     }
+    fn bit_per_symbol(&self) -> u8 {
+        self.0.bit_per_symbol()
+    }
     fn samples_per_symbol(&self) -> usize {
         self.0.samples_per_symbol()
     }

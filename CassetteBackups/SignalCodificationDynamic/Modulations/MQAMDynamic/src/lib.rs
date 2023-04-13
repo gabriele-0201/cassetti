@@ -19,6 +19,7 @@ pub struct MQAM {
     // SO I need to apply "mappatura di grey" keeping this in mind
     symbols: Vec<Symbol>,
     indeces_to_symbols: Vec<Vec<usize>>,
+    use_expected_bytes: bool,
 }
 
 impl MQAM {
@@ -27,9 +28,11 @@ impl MQAM {
         symbol_period: f32,
         rate: usize,
         n_symbols: usize, /*, h: Vec<f32>*/
+        use_expected_bytes: bool,
     ) -> Self {
         let samples_per_symbol = (symbol_period * rate as f32) as usize;
 
+        // Ensure that M = n_symbols =  L^2
         let L = match (n_symbols as f32).sqrt() {
             val if val.ceil() == val && val != 0. => val.ceil() as u8,
             _ => panic!("Number of symbols for a MQAM must be an EVEN power of two"),
@@ -39,30 +42,31 @@ impl MQAM {
         // be different than 0
         let bit_per_symbol: u8 = n_symbols.ilog2() as u8;
 
-        let cos = Signal::new(
-            &|t| (t * 2.0 * std::f32::consts::PI * freq).cos(),
-            rate,
-            samples_per_symbol,
-        )
-        .inner();
-        let sin = Signal::new(
-            &|t| (t * 2.0 * std::f32::consts::PI * freq).sin(),
-            rate,
-            samples_per_symbol,
-        )
-        .inner();
+        // evaluate BEFORE the COS ans SIN function
+        macro_rules! eval {
+            ($($n: ident),*) => {$(
+                let $n = Signal::new(
+                    &|t| (t * 2.0 * std::f32::consts::PI * freq).$n(),
+                    rate,
+                    samples_per_symbol,
+                )
+                    .inner();
+            )*};
+        }
+        eval!(cos, sin);
 
-        // If H is accepted
-        //let h_signal: Signal = (h, rate).into();
-        let h_signal = Signal::new(&|_| 1.0, rate, samples_per_symbol);
-        let h_signal_energy = h_signal.energy();
+        // TODO: accept H as argument
+        // for now Htx is just a step signal
+        // Amplitude of the rect is 2 just to heve Es = 10
+        let h_signal = Signal::new(&|_| 2_f32.sqrt(), rate, samples_per_symbol);
+        let h_signal_energy = dbg!(h_signal.energy());
         let h_signal = h_signal.inner();
 
-        // Are i8 enough?
+        // i8 should be enough (M <= 4098)
         // Compute all the coefficients required for the QAM
         let coefficients: Vec<f32> = (0..L).map(|l| (2 * l as i8 - L as i8 + 1) as f32).collect();
 
-        // Computed L grazy series
+        // Computed L Grey series
         let next_gray_vec = |vec: Vec<u8>, index: u8| -> Vec<u8> {
             [
                 vec.clone(),
@@ -71,7 +75,7 @@ impl MQAM {
             .concat()
         };
 
-        /*
+        /* TODO: add Verbose feature
         println!("Coefficients: {:?}", coefficients);
         let bit_vec = |vec: &Vec<u8>| {
             println!("Gray vec");
@@ -81,15 +85,22 @@ impl MQAM {
         };
         */
 
+        // Eval an array containing Grey coefficients
         let mut gray_vec = vec![0u8, 1u8];
         for i in 0..(L / 2) - 1 {
             gray_vec = next_gray_vec(gray_vec, i);
             //bit_vec(&gray_vec);
         }
 
+        // max bit used for every value in the grey coefficients
         let bit_per_gray = L.ilog2();
 
+        // Vec of all the aviable symbol of the modulation
         let mut symbols: Vec<Symbol> = vec![vec![]; n_symbols];
+
+        // Matrix of the costellation
+        // Each value contain the relative index of the symbol
+        // index also mean represented stream of bits
         let mut indeces_to_symbols = vec![vec![0 as usize; L as usize]; L as usize];
         for i in (0..L).rev() {
             for j in 0..L {
@@ -129,8 +140,9 @@ impl MQAM {
         );
 
         // Save the result of the internal product with the bases
-        let h_multiplier = (h_signal_energy / 2.).sqrt();
-        let costellation_values: Vec<f32> = coefficients.iter().map(|c| c * h_multiplier).collect();
+        let coeff_multiplier = (h_signal_energy / 2.).sqrt();
+        let costellation_values: Vec<f32> =
+            coefficients.iter().map(|c| c * coeff_multiplier).collect();
 
         Self {
             rate,
@@ -145,6 +157,7 @@ impl MQAM {
             indeces_to_symbols,
             base_x,
             base_y,
+            use_expected_bytes,
         }
     }
 }
@@ -171,33 +184,49 @@ impl ModDemod for MQAM {
         vec![]
     }
 
+    fn get_average_symbols_energy(&self) -> f32 {
+        ((self.symbols.len() - 1) as f32 / 3.) * self.h_signal_energy
+    }
+
     fn sync(&self, input: &mut Signal) -> Result<(), DemodErr> {
         println!("NO sync supported on QAM yet");
         Ok(())
     }
 
     fn use_expected_bytes(&self) -> bool {
-        println!("No expected bytes supported yet");
-        false
+        self.use_expected_bytes
     }
 
     fn symbols_demodulation(&self, input: Signal) -> Result<Vec<usize>, DemodErr> {
+        // First 4 bytes need to be demodulated
+        // HERE the padding is really a mess
+        if self.use_expected_bytes {}
+
+        // compute the internal product with the basis for each raw symbol
         let x_y_res: Vec<(f32, f32)> = input
             .inner()
             .chunks(self.samples_per_symbol)
             .map(|raw_symbols| {
-                // BLAH
                 let raw_symbol_signal: Signal = (raw_symbols.to_vec(), self.rate).into();
                 (
+                    /*
+                    dbg!(self.base_x.internal_product(raw_symbol_signal.clone())),
+                    dbg!(self.base_y.internal_product(raw_symbol_signal)),
+                    */
                     self.base_x.internal_product(raw_symbol_signal.clone()),
                     self.base_y.internal_product(raw_symbol_signal),
                 )
             })
             .collect();
 
+        // TODO: this can be a binary search or maybe something even better (constant time)
         let find_nearest = |val: &f32| -> usize {
             let (mut i_min, mut min) = (0, (val - self.costellation_values[0]).abs());
-            for (i, c) in self.costellation_values.iter().enumerate() {
+            for (i, c) in self
+                .costellation_values
+                .iter() /*.skip(1)*/
+                .enumerate()
+            {
                 let poss_min = (val - c).abs();
                 if poss_min < min {
                     i_min = i;
@@ -207,6 +236,7 @@ impl ModDemod for MQAM {
             i_min
         };
 
+        // find the nearest point in the costellation for each demodulated point
         let x_y_indeces: Vec<(usize, usize)> = x_y_res
             .iter()
             .map(|(x, y)| {

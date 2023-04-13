@@ -17,7 +17,7 @@ fn main() {
     println!("For now NO input is requested to yuo because I'm lazy");
 
     // Read the File
-    let bytes = FileSystemManager::read("in_test_2_bytes.org").expect("Impossible read");
+    let bytes = FileSystemManager::read("in_test_3_bytes.org").expect("Impossible read");
 
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(320.0, 240.0)),
@@ -64,9 +64,10 @@ fn channel_simulator(
         Modulation::try_from(modulation.clone()).map_err(|_| "IMP create modulation")?;
 
     // Module
-    let mut moduled_signal = modulation
-        .module(&bytes.clone())
-        .map_err(|_| "IMP modulation")?;
+    let mut moduled_signal = modulation.module(&bytes.clone()).map_err(|err| {
+        println!("err: {err:?}");
+        "IMP modulation"
+    })?;
 
     // SIMULATE CHANNEL
 
@@ -196,13 +197,14 @@ struct SNROutput {
 //  demodulation
 //
 // 3. plot the result with logarithmic axis
-//
+// BER - SNR (Eb/N0 = EnergyPerBit / 2NoiseVariance)
 fn calc_snr(
     modulation: &AvaiableModulation,
     n_bytes_to_send: usize,
     snrdb_lower: f32,
     snrdb_upper: f32,
     snrdb_step: f32,
+    rep_per_step: usize,
 ) -> Result<SNROutput, &'static str> {
     let mut snr_points = vec![];
 
@@ -210,51 +212,62 @@ fn calc_snr(
     let modulation =
         Modulation::try_from(modulation.clone()).map_err(|_| "IMP create modulation")?;
 
-    let average_symbols_energy = modulation.get_average_symbols_energy() as f64;
+    let average_bit_energy =
+        dbg!(modulation.get_average_symbols_energy() as f64) / modulation.bit_per_symbol() as f64;
 
     // Spawn N random BYTES
     // TODO: check that there are no problem with the modulation of the stuff -> should be implemented PADDING
-
     let bytes = get_bytes(n_bytes_to_send);
     let total_bit_emitted = (n_bytes_to_send * 8) as f64;
+
     // Module
     let moduled_signal = modulation.module(&bytes).map_err(|_| "IMP modulation")?;
 
     let mut snrdb = snrdb_lower;
     while snrdb <= snrdb_upper {
-        let mut to_demodule_signal = moduled_signal.clone();
+        let mut tot_bit_err = 0;
+        let mut n_rep = 0;
+        for i in 0..rep_per_step {
+            n_rep = dbg!(i);
+            let mut to_demodule_signal = moduled_signal.clone();
 
-        // snrdb = 10*log_10(Es / N0) = 10*log_10(Es / (2 * variance))
-        let variance: f64 = average_symbols_energy / (2. * 10_f64.powf(snrdb as f64 / 10.));
+            // snrdb = 10*log_10(Es / N0) = 10*log_10(Es / (2 * variance))
+            let variance: f64 = average_bit_energy / (2. * 10_f64.powf(snrdb as f64 / 10.));
 
-        // TEST
-        let snrdb_test = 10. * (average_symbols_energy / (2. * dbg!(variance))).log10();
-        //let snrdb_test = 10. * (average_symbols_energy / (2. * variance)).log10();
-        assert_eq!(snrdb as f64, snrdb_test.round());
-        // END TEST
+            /* TEST
+            let snrdb_test = 10. * (average_bit_energy / (2. * dbg!(variance))).log10();
+            //let snrdb_test = 10. * (average_bit_energy / (2. * variance)).log10();
+            assert_eq!(snrdb as f64, snrdb_test.round());
+            END TEST */
 
-        // multiply the variance by the rate to optain the correct variance
-        // to apply to every symbol of the signal
-        let sig_variance = variance * dbg!(modulation.rate()) as f64;
+            // multiply the variance by the rate to optain the correct variance
+            // to apply to every symbol of the signal
+            let sig_variance = variance * modulation.rate() as f64;
 
-        channel_simulation::add_noise_awgn(&mut to_demodule_signal, sig_variance);
+            channel_simulation::add_noise_awgn(&mut to_demodule_signal, sig_variance);
 
-        let demoduled_bytes = modulation.demodule(to_demodule_signal).map_err(|_| {
-            println!("variance level IMP demodule: {}", variance);
-            "IMP demodule, probably due to sync not found"
-        })?;
+            let demoduled_bytes = modulation.demodule(to_demodule_signal).map_err(|_| {
+                println!("variance level IMP demodule: {}", variance);
+                "IMP demodule, probably due to sync not found"
+            })?;
 
-        let errors: f64 = bytes
-            .iter()
-            .zip(demoduled_bytes.iter())
-            .map(|(m, dm)| {
-                let (diff, mut errs) = (m ^ dm, 0);
-                (0..7).for_each(|i| errs += ((diff & (1 << i)) >> i) as usize);
-                errs
-            })
-            .sum::<usize>() as f64;
+            let errors: f64 = bytes
+                .iter()
+                .zip(demoduled_bytes.iter())
+                .map(|(m, dm)| {
+                    let (diff, mut errs) = (m ^ dm, 0);
+                    (0..7).for_each(|i| errs += ((diff & (1 << i)) >> i) as usize);
+                    errs
+                })
+                .sum::<usize>() as f64;
 
-        let error_percentage = errors / total_bit_emitted;
+            tot_bit_err += dbg!(errors) as usize;
+            if dbg!(tot_bit_err) >= 100 {
+                break;
+            }
+        }
+
+        let error_percentage = tot_bit_err as f64 / (total_bit_emitted * (n_rep + 1) as f64);
 
         snr_points.push([dbg!(snrdb as f64), dbg!(dbg!(error_percentage).log10())]);
 

@@ -63,9 +63,9 @@ impl eframe::App for Gui {
                     ui.selectable_value(
                         &mut self.modulation,
                         AvaiableModulation::BPSK {
-                            symbol_period: 0.01,
-                            rate: 44100,
-                            freq: 100.0,
+                            symbol_period: 1.,
+                            rate: 100,
+                            freq: 1.,
                             sync_symbols: vec![],
                             acceptance_sync_distance: 0.01,
                             use_expected_bytes: false,
@@ -75,10 +75,10 @@ impl eframe::App for Gui {
                     ui.selectable_value(
                         &mut self.modulation,
                         AvaiableModulation::MQAM {
-                            symbol_period: 0.01,
-                            rate: 44100,
-                            freq: 1000.0,
-                            m: 4,
+                            symbol_period: 1.,
+                            rate: 100,
+                            freq: 1.,
+                            m: 16,
                         },
                         "MQAM",
                     );
@@ -266,6 +266,7 @@ impl eframe::App for Gui {
                         self.snrdb_lower,
                         self.snrdb_upper,
                         self.snrdb_step,
+                        100,
                     );
                     println!("END SNR");
                 }
