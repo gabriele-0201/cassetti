@@ -1,6 +1,16 @@
 * TODO:
 
 ** Urgent:
+
+[x] Something is really broken with the Es Energy of the BPSK (??)
+
+[x] make expected bytes works!
+
+[ ] make padding
+    -> not enough bit => 0
+    -> more bit than expected => 0
+
+
 [x] ADJUST gui
     [x] optional expected bytes
     [x] remove default sync

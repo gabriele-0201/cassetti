@@ -17,6 +17,7 @@ pub struct BPSK {
     htx: Signal,
     base: Signal,
     base_energy: f32,
+    average_symbol_energy: f32,
     htx_energy: f32,
     use_expected_bytes: bool,
 }
@@ -35,10 +36,10 @@ impl BPSK {
         let samples_per_symbol = (symbol_period * rate as f32) as usize;
 
         // TODO: accept this in the method's arguments
-        // 2 just to normalize the energy
-        // TODO: something is broken HERE,
+        // 2.sqrt() just to normalize the energy
         // something is not correclty depend on the htx stuff
-        let htx = Signal::new(&|_| 2_f32.sqrt(), rate, samples_per_symbol);
+        //let htx = Signal::new(&|_| 2_f32.sqrt(), rate, samples_per_symbol);
+        let htx = Signal::new(&|_| 1., rate, samples_per_symbol);
         let htx_energy = htx.energy();
 
         let cos: Symbol = Signal::new_with_indeces(
@@ -53,7 +54,6 @@ impl BPSK {
         let symbols = vec![cos, minus_cos];
 
         let base_mutliplier = (2.0 / htx_energy).sqrt();
-        println!("base multiplier: {}", base_mutliplier);
         let base = Signal::new_with_indeces(
             &|i, t| {
                 base_mutliplier * htx.inner_ref()[i] * (t * 2.0 * std::f32::consts::PI * freq).cos()
@@ -62,18 +62,22 @@ impl BPSK {
             samples_per_symbol,
         );
         let base_energy = base.energy();
+        let average_symbol_energy = htx_energy / 2.;
 
         println!("H_tx energy: {}", htx_energy); // should be equal to the symbol period
-        println!("Base energy: {}, should be Htx_energy / 2", base_energy); // should be equal to the symbol period
+        println!("base multiplier: {}", base_mutliplier);
+        println!("Base energy: {}, should be 1", base_energy); // should be equal to the symbol period
 
         // ensure that the energy of the symbols are +-(htx_energy / 2).sqrt() = +-0.7
+        let cos_energy = Signal::from_vec(symbols[0].to_vec(), rate).energy();
+        println!("cos energy: {}, should be Eh / 2", cos_energy);
+        let min_cos_energy = Signal::from_vec(symbols[1].to_vec(), rate).energy();
+        println!("minus cos energy: {}, should be Eh / 2", min_cos_energy);
+        let real_averge_energy = (cos_energy + min_cos_energy) / 2.;
+
         println!(
-            "cos energy: {}, should be (Eh / 2).sqrt()",
-            Signal::from_vec(symbols[0].to_vec(), rate).energy()
-        );
-        println!(
-            "minus cos energy: {}, should be -(Eh / 2).sqrt()",
-            Signal::from_vec(symbols[1].to_vec(), rate).energy()
+            "Average symbols Energy (Es), real: {} thorical: {}",
+            real_averge_energy, average_symbol_energy
         );
 
         // TODO: why here I'm returing a tuple?
@@ -100,6 +104,7 @@ impl BPSK {
             use_expected_bytes,
             base,
             base_energy,
+            average_symbol_energy,
         }
     }
 }
@@ -126,7 +131,7 @@ impl ModDemod for BPSK {
     }
 
     fn get_average_symbols_energy(&self) -> f32 {
-        self.base_energy
+        self.average_symbol_energy
     }
 
     fn get_sync(&self) -> Vec<f32> {
@@ -324,14 +329,11 @@ impl ModDemod for BPSK {
     }
 
     fn symbols_demodulation(&self, mut input: Signal) -> Result<Vec<usize>, DemodErr> {
-        // SYNC the signal
-        self.sync(&mut input)?;
-
         //println!("len after sync: {}", input.inner_ref().len());
-        let mut input = input.inner();
+        //let mut input = input.inner();
 
+        /*
         let mut symbols_to_take = input.len();
-
         // samples to take for the initial number
         if self.use_expected_bytes {
             let mut samples_to_take = (4.0 * 8.0 * self.samples_per_symbol as f32) as usize;
@@ -370,6 +372,23 @@ impl ModDemod for BPSK {
         let raw_bytes: Vec<usize> = input
             .chunks(self.samples_per_symbol)
             .take(symbols_to_take)
+            .map(|raw_symbol| {
+                if self
+                    .base
+                    .internal_product((raw_symbol.to_vec(), self.rate).into())
+                    >= 0.0
+                {
+                    0usize
+                } else {
+                    1usize
+                }
+            })
+            .collect();
+        */
+
+        let raw_bytes: Vec<usize> = input
+            .inner()
+            .chunks(self.samples_per_symbol)
             .map(|raw_symbol| {
                 if self
                     .base
@@ -426,7 +445,7 @@ mod tests {
                     })
                     .collect();
 
-                let bpsk = BPSK::new(freq, symbol_period, rate, dbg!(sync_symbols), 0.001);
+                let bpsk = BPSK::new(freq, symbol_period, rate, dbg!(sync_symbols), 0.001, false);
 
                 //let bytes: Vec<u8> = vec![39, 141]; //0010 0111 1000 1101
                 let bytes: Vec<u8> = vec![1]; //0000 0001
@@ -491,7 +510,7 @@ mod tests {
                     })
                     .collect();
 
-                let bpsk = BPSK::new(freq, symbol_period, rate, dbg!(sync_symbols), 0.001);
+                let bpsk = BPSK::new(freq, symbol_period, rate, dbg!(sync_symbols), 0.001, false);
 
                 //let bytes: Vec<u8> = vec![39, 141]; //0010 0111 1000 1101
                 let bytes: Vec<u8> = vec![1]; //0000 0001
@@ -521,24 +540,19 @@ mod tests {
 
     #[test]
     fn test_bigger_signal() {
-        let rate = 1000;
-        let freq: f32 = 100.0;
+        let rate = 100;
+        let freq: f32 = 1.0;
         let symbol_period: f32 = 1.0;
 
         let sync_symbols = vec![];
 
-        let bpsk = BPSK::new(freq, symbol_period, rate, dbg!(sync_symbols), 0.001);
+        let bpsk = BPSK::new(freq, symbol_period, rate, sync_symbols, 0.1, true);
 
         let bytes: Vec<u8> = vec![39, 141]; //0010 0111 1000 1101
 
         let modulated_bytes = bpsk.module(&bytes).expect("IMP modulation");
 
-        let bytes_to_demodule = vec![
-            //vec![0.0; delay_amount],
-            modulated_bytes.clone().inner(),
-            vec![0.0; 12432],
-        ]
-        .concat();
+        let bytes_to_demodule = vec![modulated_bytes.clone().inner(), vec![0.0; 1]].concat();
 
         let demod_bytes = bpsk
             .demodule((bytes_to_demodule, rate).into())
@@ -562,7 +576,7 @@ mod tests {
 
         let sync_symbols = vec![true, false, true, true, false, true, false, true];
 
-        let bpsk = BPSK::new(freq, symbol_period, rate, sync_symbols, 0.001);
+        let bpsk = BPSK::new(freq, symbol_period, rate, sync_symbols, 0.001, true);
 
         let bytes: Vec<u8> = vec![39, 141]; //0010 0111 1000 1101
 

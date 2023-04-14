@@ -47,6 +47,18 @@ impl<'a> RawSymbols<'a> {
             remaining: &vec[..],
         })
     }
+
+    /// Convert an interator over RawSymbols to a Vec<f32> representing the Signal
+    /// formed using the symbols specified by the modulation
+    ///
+    /// This function CAN panic, if the symbol in the iter is bigger
+    /// than the specified symbols
+    fn to_signal_vec(self, symbols: &[traits::Symbol]) -> Vec<f32> {
+        self.into_iter()
+            .map(|n_symbol| symbols[n_symbol].clone())
+            .collect::<Vec<Vec<f32>>>()
+            .concat()
+    }
 }
 
 impl<'a> IntoIterator for RawSymbols<'a> {

@@ -67,25 +67,26 @@ pub trait ModDemod {
     fn sync(&self, input: &mut Signal) -> Result<(), DemodErr>;
 
     // this method specify if the modulation is using or not
-    // the tecnique of inserting at the beginning of the bytes the number of
-    // bytes that will be demodulated, this is really usefull on demodulation
+    // the tecnique of inserting at the beginning of the input the number of
+    // expected bytes that were sent
     fn use_expected_bytes(&self) -> bool;
 
     // The return is a SignalPieceVec with the same rate of th
     fn module(&self, input: &Vec<u8>) -> Result<Signal, ModErr> {
-        // worse thing ever but for now ok...
-        let mut input = input.clone();
-        if self.use_expected_bytes() {
-            // ADD at the beginnig a u32 to specify the amount of bytes that
-            // will be modulated, during the demodulation this value will be used
-            // to demodule a specific amount of the remening signal
+        let mut n_bytes_signal = vec![];
+        let sync = self.get_sync();
 
+        // ADD at the beginnig an u32 to represent the amount of bytes that
+        // later needs to be demodulated
+        if self.use_expected_bytes() {
             // CONVETION: I will push the byte in a little endian order
             // so the first byte to appear in the signal is the least significant
-            let num_bytes: u32 = dbg!(input.len() as u32);
-            input = [num_bytes.to_le_bytes().to_vec(), input.clone()]
-                .concat()
-                .to_vec();
+            n_bytes_signal = RawSymbols::try_get_symbols(
+                &(input.len() as u32).to_le_bytes().to_vec(),
+                self.bit_per_symbol(),
+            )
+            .map_err(|_| ModErr::InvalidInput)?
+            .to_signal_vec(self.symbols());
         }
 
         // We have N symbols and the approach is ONLY for now:
@@ -96,36 +97,57 @@ pub trait ModDemod {
 
         // The access to the array should never panic because
         // raw_symbols is already entirely checked based on bit_per_symbol
-        let modulated_signal = raw_symbols
-            .into_iter()
-            .map(|n_symbol| self.symbols()[n_symbol].clone())
-            .collect::<Vec<Vec<f32>>>()
-            .concat();
+        let modulated_signal = raw_symbols.to_signal_vec(self.symbols());
 
-        // TODO: decide if is better to make MORE explicit the fact that the sync is not used
-
-        // A new function is required, sync
-        // this will return the symbols that are needed to add
-        // at the beginnig of the modulated symbol
+        // The contentaion is useless if
         Ok(Signal::from_vec(
-            [self.get_sync(), modulated_signal].concat(),
+            [sync, n_bytes_signal, modulated_signal].concat(),
             self.rate(),
         ))
     }
 
+    fn symbols_demodulation(&self, input: Signal) -> Result<Vec<usize>, DemodErr>;
+
     // What this method does is:
     // 1. search the sync signal
-    // 2. demodule the first 4bytes (=4*8*symbol_period*sample_rate samples) to the
+    // 2. demodule the first 4bytes ((((4*8) / n_bit_per_symbol).ceil()) * sample_per_symbol) to the
     // the number of exepcted bytes to demodule
     // (return Err if the expected bytes is less than the avaiable signal)
     // 3. demodule the just defined amount of signal
     // 4. return the bytes
-    fn symbols_demodulation(&self, input: Signal) -> Result<Vec<usize>, DemodErr>;
+    fn demodule(&self, mut input: Signal) -> Result<Vec<u8>, DemodErr> {
+        // SYNC the signal
+        //println!("len pre sync: {}", input.inner_ref().len());
+        self.sync(&mut input)?;
+        //println!("len after sync: {}", input.inner_ref().len());
 
-    // This is a little bit more complicated I don't know if this can be generalized
-    // TODO: this can be generalized, the modulation shoul thouch ONLY symbols
-    // and the bytes are managed by the trait
-    fn demodule(&self, input: Signal) -> Result<Vec<u8>, DemodErr> {
+        // Decode Expected Bytes
+        if self.use_expected_bytes() {
+            let samples_to_take = ((32. / self.bit_per_symbol() as f32).ceil()
+                * self.samples_per_symbol() as f32) as usize;
+
+            let expected_num_samples: Vec<f32> =
+                input.inner_ref_mut().drain(..samples_to_take).collect();
+
+            let raw_num_symbols =
+                self.symbols_demodulation((expected_num_samples, self.rate()).into())?;
+
+            let num_bytes = collect_bytes_from_raw_bytes(raw_num_symbols, self.bit_per_symbol())
+                .map_err(|err| DemodErr::Other(err.to_string()))?;
+
+            let expected_bytes = dbg!(u32::from_le_bytes(num_bytes.try_into().unwrap()));
+
+            let expected_samples = ((8 * expected_bytes) as f32 / self.bit_per_symbol() as f32)
+                .ceil() as usize
+                * self.samples_per_symbol();
+
+            if expected_samples > input.inner_ref().len() {
+                return Err(DemodErr::SmallerThanExpected);
+            }
+
+            let _res = input.inner_ref_mut().split_off(expected_samples);
+        }
+
         let raw_bytes = self.symbols_demodulation(input)?;
 
         collect_bytes_from_raw_bytes(raw_bytes, self.bit_per_symbol())
