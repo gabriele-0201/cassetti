@@ -198,7 +198,11 @@ impl Audio {
     // Play the Signal and save the relative wav file under PLAY_FILE_PATH
     // could return err if the signal specified in the signal si different
     // from the one in Audio struct
-    pub fn play(&self, sig: Signal) -> Result<(), &'static str> {
+    pub fn play(
+        &self,
+        sig: Signal,
+        start_stream_rx: std::sync::mpsc::Receiver<()>,
+    ) -> Result<(), &'static str> {
         if sig.rate() != self.rate {
             return Err("Impossible play signal with rate different from the audio stream");
         }
@@ -210,7 +214,9 @@ impl Audio {
 
         let mut sig_iter = sig.inner().into_iter();
 
-        println!("Begin play...");
+        let mut wait_once: Option<()> = None;
+
+        //println!("Begin play...");
         let stream = self
             .device
             .build_output_stream(
@@ -218,6 +224,19 @@ impl Audio {
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                     // I use mut just because I think that in this way the data is moved and NOT cloned in the process
                     //let mut signal_iter = sig.inner_ref_mut().iter_mut();
+
+                    // Wait to start playing the signal
+                    // until user press enter
+                    match wait_once {
+                        None => {
+                            println!("Wait for...");
+                            start_stream_rx.recv().unwrap();
+                            wait_once = Some(());
+                            println!("begin play signal...");
+                        }
+                        Some(_) => (),
+                    };
+
                     for sample in data.iter_mut() {
                         match sig_iter.next() {
                             Some(val) => *sample = val,
@@ -234,6 +253,7 @@ impl Audio {
             .unwrap();
 
         stream.play().unwrap();
+
         complete_rx.recv().unwrap();
         println!("Play done!");
         drop(stream);

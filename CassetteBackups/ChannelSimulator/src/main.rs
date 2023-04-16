@@ -17,7 +17,7 @@ fn main() {
     println!("For now NO input is requested to yuo because I'm lazy");
 
     // Read the File
-    let bytes = FileSystemManager::read("in_test_3_bytes.org").expect("Impossible read");
+    let bytes = FileSystemManager::read("in_test_2_bytes.org").expect("Impossible read");
 
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(320.0, 240.0)),

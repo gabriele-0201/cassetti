@@ -6,9 +6,11 @@
 
 [x] make expected bytes works!
 
-[ ] make padding
+[x] make padding
     -> not enough bit => 0
     -> more bit than expected => 0
+
+[x] implement sync for MQAM -> NOT implement for MQAM but move the stuff in the BPSK to the ModDemod trait!!
 
 
 [x] ADJUST gui
@@ -24,20 +26,24 @@
 [x] correct 64 QAM
 [x] correct MQAM SNR
 
-** After Urgent
-
-[ ] QAM -> implement Sync and expected bytes
-
 ** low level priority:
 [ ] Adjust ModDemod trait
+
+[ ] adjust Signal abstraction REALLY think about this!
+
+[ ] refactor GUI
+
 [ ] Little gui to specify witch type of symbols are accepted (to being able to define the sync one)
+
 [ ] define random sync symbol
+
 [ ] accept aplitude of Htx
-[ ] manage padding
+
 [ ] Read from file + textbox where write stuff
+
 [ ] create button to convert signals to wav
 [ ] create button to save file
-[ ] adjust Signal abstraction
+
 
 [ ] error correction?
 
@@ -45,3 +51,7 @@
 
 ** Implement another modulation
 ** Fix all the current stuff
+** SNR - BER on the simulator
+How you can use CALF: (doable but extremely complex)
++ hand made -> just using helvum and manually redirect the stuff every time
++ automated -> utilizing the depency 'pipewire' I should be able to every time cpal spawn a new output or input stream this will be attecched to CALF

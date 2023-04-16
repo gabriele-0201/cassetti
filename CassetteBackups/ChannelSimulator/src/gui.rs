@@ -79,6 +79,9 @@ impl eframe::App for Gui {
                             rate: 100,
                             freq: 1.,
                             m: 16,
+                            sync_symbols: vec![],
+                            acceptance_sync_distance: 0.01,
+                            use_expected_bytes: false,
                         },
                         "MQAM",
                     );
@@ -109,11 +112,11 @@ impl eframe::App for Gui {
                         ui.add(egui::TextEdit::singleline(&mut self.string_sync_symbols));
                     if sync_symbols_changing.changed() {
                         //.expect("unexpected sync symbol")
-                        let parsing_sync_symbols: Result<Vec<u8>, _> = self
+                        let parsing_sync_symbols: Result<Vec<usize>, _> = self
                             .string_sync_symbols
                             .as_str()
                             .split(",")
-                            .map(|s| s.parse::<u8>())
+                            .map(|s| s.parse::<usize>())
                             .collect();
                         if let Ok(res) = parsing_sync_symbols {
                             *sync_symbols = res;
@@ -133,6 +136,9 @@ impl eframe::App for Gui {
                     ref mut rate,
                     ref mut freq,
                     ref mut m,
+                    ref mut sync_symbols,
+                    ref mut acceptance_sync_distance,
+                    ref mut use_expected_bytes,
                 } => {
                     s_period_and_rate_slider!(symbol_period, rate);
                     ui.add(egui::Slider::new(freq, 0.0..=20000.0).text("QAM Frequency"));
@@ -140,6 +146,34 @@ impl eframe::App for Gui {
                         egui::Slider::new(m, 4..=256)
                             .text("Number of symbols, must be an even power of two"),
                     );
+                    ui.add(egui::Checkbox::new(
+                        use_expected_bytes,
+                        "Number expected bytes",
+                    ));
+
+                    ui.label("Sync symbols");
+                    let sync_symbols_changing =
+                        ui.add(egui::TextEdit::singleline(&mut self.string_sync_symbols));
+                    if sync_symbols_changing.changed() {
+                        //.expect("unexpected sync symbol")
+                        let parsing_sync_symbols: Result<Vec<usize>, _> = self
+                            .string_sync_symbols
+                            .as_str()
+                            .split(",")
+                            .map(|s| s.parse::<usize>())
+                            .collect();
+                        if let Ok(res) = parsing_sync_symbols {
+                            *sync_symbols = res;
+                        }
+                    }
+                    ui.add(
+                        egui::Slider::new(acceptance_sync_distance, 0.0..=0.3)
+                            .text("Sync signal distance acceptance"),
+                    );
+                    ui.add(egui::Checkbox::new(
+                        use_expected_bytes,
+                        "Number expected bytes",
+                    ));
                 }
             };
 

@@ -14,8 +14,7 @@ pub enum AvaiableModulation {
         symbol_period: f32,
         rate: usize,
         freq: f32,
-        // This will be translated to bool, 0 => false, _ => true
-        sync_symbols: Vec<u8>,
+        sync_symbols: Vec<usize>,
         acceptance_sync_distance: f32,
         use_expected_bytes: bool,
     },
@@ -24,6 +23,9 @@ pub enum AvaiableModulation {
         rate: usize,
         freq: f32,
         m: usize,
+        sync_symbols: Vec<usize>,
+        acceptance_sync_distance: f32,
+        use_expected_bytes: bool,
     },
 }
 
@@ -63,10 +65,7 @@ impl TryFrom<AvaiableModulation> for Modulation {
                 freq,
                 symbol_period,
                 rate,
-                sync_symbols
-                    .iter()
-                    .map(|v| if *v == 0 { false } else { true })
-                    .collect(),
+                sync_symbols,
                 acceptance_sync_distance,
                 use_expected_bytes,
             )),
@@ -75,7 +74,18 @@ impl TryFrom<AvaiableModulation> for Modulation {
                 rate,
                 freq,
                 m,
-            } => Box::new(MQAM::new(freq, symbol_period, rate, m)),
+                sync_symbols,
+                acceptance_sync_distance,
+                use_expected_bytes,
+            } => Box::new(MQAM::new(
+                freq,
+                symbol_period,
+                rate,
+                m,
+                sync_symbols,
+                acceptance_sync_distance,
+                use_expected_bytes,
+            )),
         }))
     }
 }

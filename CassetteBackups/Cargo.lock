@@ -68,6 +68,8 @@ version = "0.1.0"
 dependencies = [
  "Dsp",
  "SignalCodificationDynamic",
+ "rand",
+ "rand_distr",
 ]
 
 [[package]]

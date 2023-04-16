@@ -16,6 +16,12 @@ pub enum DemodErr {
     Other(String),
 }
 
+#[derive(Clone)]
+pub struct SyncInfo {
+    pub sync_signal_vec: Vec<f32>,
+    pub acceptance_sync_distance: f32,
+}
+
 // This struct will be used to iterate over the symbols
 // that represent some bytes
 //
@@ -39,9 +45,16 @@ impl<'a> RawSymbols<'a> {
     /// If the number of bits make impossible to cover perfectly all the bytes
     /// than it will fail
     fn try_get_symbols(vec: &'a Vec<u8>, n_bit: u8) -> Result<Self, &'static str> {
+        // If n_bit is a perfect divisor of vec.len() than
+        // the required number of zero will be added to the vec
+        // to make n_bit a perfect divisor
+
+        /* OLD
         if (vec.len() * 8) % n_bit as usize != 0 {
             return Err("Impossible extract perfect symbols from here, maybe is possible but now I'm too tired to think");
         }
+        */
+
         Ok(Self {
             n_bit,
             remaining: &vec[..],
@@ -55,7 +68,7 @@ impl<'a> RawSymbols<'a> {
     /// than the specified symbols
     fn to_signal_vec(self, symbols: &[traits::Symbol]) -> Vec<f32> {
         self.into_iter()
-            .map(|n_symbol| symbols[n_symbol].clone())
+            .map(|n_symbol| symbols[dbg!(n_symbol)].clone())
             .collect::<Vec<Vec<f32>>>()
             .concat()
     }
@@ -92,6 +105,13 @@ impl<'a> Iterator for RawSymbolIterator<'a> {
         // because I already check that symbols fit perfectly
         for holder_index in (0..self.n_bit).rev() {
             let b = 1 << byte_index;
+
+            // Is possible the the length of remaingn is LESS than
+            // the n_bit, this means that all the remaing values will be stored
+            // in the holder as usual and all the remaing are ZERO
+            if arr_index == self.remaining.len() {
+                break;
+            }
 
             if self.remaining[arr_index] & b == b {
                 holder = holder | (1 << holder_index);
@@ -155,6 +175,7 @@ pub struct RawBytes<'a> {
 pub fn collect_bytes_from_raw_bytes(
     raw_bytes: Vec<usize>,
     n_bit: u8,
+    expected_bytes: Option<u32>,
 ) -> Result<Vec<u8>, &'static str> {
     if raw_bytes.is_empty() || n_bit == 0 {
         return Err(
@@ -237,10 +258,18 @@ pub fn collect_bytes_from_raw_bytes(
         while let Some(()) = place_bits(symbol) {}
     }
 
-    // When the byte is finished place_bits will alwasy add a new byte
-    // so now I will remove the last one
-
-    bytes.pop();
+    match expected_bytes {
+        None => {
+            // When the byte is finished place_bits will alwasy add a new byte
+            // so now I will remove the last one
+            // This pop ASLO remove the exceeding bits that are not forming the correct amount of bytes
+            bytes.pop();
+        }
+        Some(expected) => {
+            // Truncate the vec to keep ONLY the correct amount of bytes
+            bytes.truncate(expected as usize);
+        }
+    }
 
     Ok(bytes)
 }
@@ -329,19 +358,28 @@ mod tests {
     #[test]
     fn test_pack_1_bit() {
         let vec = vec![0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1];
-        assert_eq!(Ok(vec![85u8, 131u8]), collect_bytes_from_raw_bytes(vec, 1));
+        assert_eq!(
+            Ok(vec![85u8, 131u8]),
+            collect_bytes_from_raw_bytes(vec, 1, None)
+        );
     }
 
     #[test]
     fn test_pack_2_bit() {
         let vec = vec![0, 1, 2, 3, 1, 0, 1, 2];
-        assert_eq!(Ok(vec![27u8, 70u8]), collect_bytes_from_raw_bytes(vec, 2));
+        assert_eq!(
+            Ok(vec![27u8, 70u8]),
+            collect_bytes_from_raw_bytes(vec, 2, None)
+        );
     }
 
     #[test]
     fn test_pack_3_bit() {
         let vec = vec![0, 1, 4, 0, 1, 4, 0, 3];
-        assert_eq!(Ok(vec![6, 3, 3]), collect_bytes_from_raw_bytes(vec, 3));
+        assert_eq!(
+            Ok(vec![6, 3, 3]),
+            collect_bytes_from_raw_bytes(vec, 3, None)
+        );
     }
 
     #[test]
@@ -349,7 +387,7 @@ mod tests {
         let vec = vec![255, 123, 23, 67, 98];
         assert_eq!(
             Ok(vec![255u8, 123u8, 23u8, 67u8, 98u8]),
-            collect_bytes_from_raw_bytes(vec, 8)
+            collect_bytes_from_raw_bytes(vec, 8, None)
         );
     }
 
@@ -358,7 +396,44 @@ mod tests {
         let vec = vec![129, 32];
         assert_eq!(
             Ok(vec![8u8, 16u8, 32u8]),
-            collect_bytes_from_raw_bytes(vec, 12)
+            collect_bytes_from_raw_bytes(vec, 12, None)
+        );
+    }
+
+    #[test]
+    fn test_pack_unpack_with_padding() {
+        // Unpack 6 bit
+        let vec = vec![1, 2]; // 0000 00|01 0000| 0010 ||00
+        let raw_symbols = RawSymbols::try_get_symbols(&vec, 6).unwrap();
+        assert_eq!(
+            vec![0, 16, 8],
+            raw_symbols.into_iter().collect::<Vec<usize>>()
+        );
+
+        // Pack 6 bit
+        let vec = vec![1, 2, 4]; // 000001 000010 000100
+                                 // 00000100 00100001 | 00
+        assert_eq!(Ok(vec![4, 33]), collect_bytes_from_raw_bytes(vec, 6, None));
+
+        // TODO:
+        // Unpack 12 bit
+        let vec = vec![1, 2]; // 0000 0001 0000 0|010 ||0000000000
+        let raw_symbols = RawSymbols::try_get_symbols(&vec, 13).unwrap();
+        assert_eq!(
+            vec![32, 2048],
+            raw_symbols.into_iter().collect::<Vec<usize>>()
+        );
+
+        // pack 12 bit
+        let vec = vec![32, 2048];
+        // HERE is normal to find a zero because None is provided as expected_bytes
+        assert_eq!(
+            Ok(vec![1, 2, 0]),
+            collect_bytes_from_raw_bytes(vec.clone(), 13, None)
+        );
+        assert_eq!(
+            Ok(vec![1, 2]),
+            collect_bytes_from_raw_bytes(vec, 13, Some(2))
         );
     }
 }

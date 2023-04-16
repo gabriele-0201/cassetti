@@ -44,13 +44,11 @@ fn main() {
     let sample_rate = 44100;
     let max_amplitude = 1.0;
     let bpsk = BPSK::new(
-        1000.0,      // freq
-        0.3,         // symbol_period
-        sample_rate, // rate
-        vec![
-            false, true, true, false, false, true, false, false, true, true,
-        ], // sync vec
-        0.8,         // sync symbol accepted distance
+        1000.0,                             // freq
+        0.3,                                // symbol_period
+        sample_rate,                        // rate
+        vec![0, 1, 1, 0, 1, 1, 0, 0, 1, 0], // sync vec
+        0.8,                                // sync symbol accepted distance
         true,
     );
     println!("done!");
@@ -76,7 +74,7 @@ fn main() {
 
 fn mod_and_play<T: ModDemod>(modulation: T, max_amplitude: f32) {
     print!("Reading file.. ");
-    let bytes = FileSystemManager::read().expect("Impossible read");
+    let bytes = FileSystemManager::read("in_test.org").expect("Impossible read");
     println!("done!");
 
     print!("Modulating...");
@@ -96,14 +94,23 @@ fn play(signal: Signal) {
 
     let stdin = std::io::stdin();
 
+    let (start_stream_tx, start_stream_rx) = std::sync::mpsc::sync_channel(1);
+
+    let audio_play = std::thread::spawn(move || {
+        //print!("Play modulated file...");
+        audio
+            .play(signal, start_stream_rx)
+            .expect("Impossible play");
+        //println!("done!");
+    });
+
     println!("Press ENTER when you are ready to play");
     stdin
         .read_line(&mut String::new())
         .expect("IMP work with stdin");
+    start_stream_tx.try_send(()).ok();
 
-    print!("Play modulated file...");
-    audio.play(signal).expect("Impossible play");
-    println!("done!");
+    audio_play.join().expect("Impossible play signal");
 }
 
 fn compress_signal<T: ModDemod>(modulation: &T, sig: &mut Signal, max_amplitude: f32) {

@@ -20,6 +20,7 @@ pub struct MQAM {
     symbols: Vec<Symbol>,
     indeces_to_symbols: Vec<Vec<usize>>,
     use_expected_bytes: bool,
+    sync_info: SyncInfo,
 }
 
 impl MQAM {
@@ -28,6 +29,8 @@ impl MQAM {
         symbol_period: f32,
         rate: usize,
         n_symbols: usize, /*, h: Vec<f32>*/
+        sync_symbols: Vec<usize>,
+        acceptance_sync_distance: f32,
         use_expected_bytes: bool,
     ) -> Self {
         let samples_per_symbol = (symbol_period * rate as f32) as usize;
@@ -144,6 +147,17 @@ impl MQAM {
         let costellation_values: Vec<f32> =
             coefficients.iter().map(|c| c * coeff_multiplier).collect();
 
+        let sync_signal_vec: Vec<f32> = sync_symbols
+            .into_iter()
+            .map(|symbol| symbols[symbol].clone())
+            .collect::<Vec<Vec<f32>>>()
+            .concat();
+
+        let sync_info = SyncInfo {
+            sync_signal_vec,
+            acceptance_sync_distance,
+        };
+
         Self {
             rate,
             samples_per_symbol,
@@ -158,6 +172,7 @@ impl MQAM {
             base_x,
             base_y,
             use_expected_bytes,
+            sync_info,
         }
     }
 }
@@ -179,18 +194,12 @@ impl ModDemod for MQAM {
         &self.symbols[..]
     }
 
-    fn get_sync(&self) -> Vec<f32> {
-        println!("NO sync supported on QAM yet");
-        vec![]
+    fn get_sync_info(&self) -> SyncInfo {
+        self.sync_info.clone()
     }
 
     fn get_average_symbols_energy(&self) -> f32 {
         ((self.symbols.len() - 1) as f32 / 3.) * self.h_signal_energy
-    }
-
-    fn sync(&self, input: &mut Signal) -> Result<(), DemodErr> {
-        println!("NO sync supported on QAM yet");
-        Ok(())
     }
 
     fn use_expected_bytes(&self) -> bool {
@@ -198,10 +207,6 @@ impl ModDemod for MQAM {
     }
 
     fn symbols_demodulation(&self, input: Signal) -> Result<Vec<usize>, DemodErr> {
-        // First 4 bytes need to be demodulated
-        // HERE the padding is really a mess
-        if self.use_expected_bytes {}
-
         // compute the internal product with the basis for each raw symbol
         let x_y_res: Vec<(f32, f32)> = input
             .inner()
@@ -259,7 +264,7 @@ mod tests {
     #[test]
     fn new_4qam() {
         let rate = 1000;
-        let qam = MQAM::new(100.0, 1.0, rate, 4);
+        let qam = MQAM::new(100.0, 1.0, rate, 4, vec![], 0., false);
         let bytes: Vec<u8> = vec![39, 141]; // 0010 0111 1000 1101
 
         // MAP:
@@ -291,7 +296,7 @@ mod tests {
     #[test]
     fn new_16qam() {
         let rate = 1000;
-        let qam = MQAM::new(100.0, 1.0, rate, 16);
+        let qam = MQAM::new(100.0, 1.0, rate, 16, vec![], 0., false);
         let bytes: Vec<u8> = vec![39, 141, 173, 63, 182]; // 0010 0111 1000 1101 1010 1101 0011 1111 1011 0110
 
         // MAP:
@@ -357,7 +362,7 @@ mod tests {
     #[test]
     fn new_64qam() {
         let rate = 1000;
-        let qam = MQAM::new(100.0, 1.0, rate, 64);
+        let qam = MQAM::new(100.0, 1.0, rate, 64, vec![], 0., false);
         let bytes: Vec<u8> = vec![39, 141, 173]; // 0010 01|11 1000| 1101 10|10 1101
 
         // MAP:
@@ -382,5 +387,90 @@ mod tests {
             .expect("Impossible demod");
 
         assert_eq!(bytes, demod_bytes);
+    }
+
+    #[test]
+    fn test_padding() {
+        let rate = 100;
+        let qam = MQAM::new(1.0, 1.0, rate, 64, vec![], 0., false);
+        let bytes: Vec<u8> = vec![4, 33]; // 0000 0100 0010 0001
+
+        let mod_res: Vec<f32> = [
+            qam.symbols[1].clone(),
+            qam.symbols[2].clone(),
+            qam.symbols[4].clone(),
+        ]
+        .concat();
+
+        let real_mod_res: Vec<f32> = qam.module(&bytes).expect("Impossible to module").inner();
+        assert_eq!(mod_res, real_mod_res);
+
+        let demod_bytes = qam
+            .demodule((mod_res, rate).into())
+            .expect("Impossible demod");
+
+        assert_eq!(bytes, demod_bytes);
+    }
+
+    #[test]
+    fn test_sync_with_noise() {
+        use rand_distr::{Distribution, Normal, Uniform};
+
+        let rate = 1000;
+        let freq: f32 = 100.0;
+        let symbol_period: f32 = 1.0;
+
+        // samples_per_symbol = symbol_period * rate
+        // step_by = 1 / rate
+
+        let uniform_symbols = Uniform::new(0, 15);
+        let uniform_delay = Uniform::new(0, 1000);
+
+        // number of symbols always 10 for now
+        let n_symbols_sync = 10;
+        // noise variance divided by 10
+        for noise_variance in 1..=20 {
+            let normal_noise = Normal::new(0.0, noise_variance as f32 / 10.0).unwrap();
+            for _ in 0..1 {
+                // Generate a random sync sinal, will be used an uniform
+                // distribution among symbols but the number of symbols is
+                // specified at creation
+                let sync_symbols: Vec<usize> = (0..n_symbols_sync)
+                    .into_iter()
+                    .map(|_| uniform_symbols.sample(&mut rand::thread_rng()))
+                    .collect();
+
+                let mqam = MQAM::new(
+                    freq,
+                    symbol_period,
+                    rate,
+                    16,
+                    dbg!(sync_symbols),
+                    0.01,
+                    true,
+                );
+
+                let bytes: Vec<u8> = vec![39, 141]; //0010 0111 1000 1101
+
+                let modulated_bytes = mqam.module(&bytes).expect("IMP modulation");
+
+                // Test over 10 possible random offset, from 0 to 10000 offset of samples
+                for _/*delay_amount*/ in 0..1 {
+                    let random_delay_amount = uniform_delay.sample(&mut rand::thread_rng());
+
+                    let bytes_to_demodule = vec![
+                        vec![normal_noise.sample(&mut rand::thread_rng()); dbg!(random_delay_amount)],
+                        modulated_bytes.clone().inner(),
+                    ]
+                    .concat();
+
+                    let demod_bytes = mqam
+                        .demodule((bytes_to_demodule, rate).into())
+                        .expect("IMP demodule");
+
+                    assert_eq!(bytes, demod_bytes);
+                }
+            }
+        }
     }
 }
