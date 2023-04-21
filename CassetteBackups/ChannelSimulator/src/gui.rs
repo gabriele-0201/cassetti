@@ -11,6 +11,8 @@ pub struct Gui {
     channel_output: Result<ChannelOutput, &'static str>,
     n_symbols_to_show: usize,
     string_sync_symbols: String,
+    n_symbols_in_modulation: usize,
+    n_symbols_in_sync_signal: usize,
     snr_output: Result<SNROutput, &'static str>,
     snr_n_bytes: usize,
     snrdb_upper: f32,
@@ -39,6 +41,8 @@ impl Gui {
             channel_output: Err("Modulation TBD"),
             n_symbols_to_show: 5,
             string_sync_symbols: String::from(""),
+            n_symbols_in_modulation: 2,
+            n_symbols_in_sync_signal: 10,
             snr_output: Err("SNR TBD"),
             snr_n_bytes: 10000,
             snrdb_upper: 0.,
@@ -51,7 +55,6 @@ impl Gui {
 impl eframe::App for Gui {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            // TEST
             // Title
             ui.heading("Modulation Managment");
 
@@ -95,18 +98,8 @@ impl eframe::App for Gui {
                 };
             }
 
-            match &mut self.modulation {
-                AvaiableModulation::BPSK {
-                    ref mut symbol_period,
-                    ref mut rate,
-                    ref mut freq,
-                    ref mut sync_symbols,
-                    ref mut acceptance_sync_distance,
-                    ref mut use_expected_bytes,
-                } => {
-                    s_period_and_rate_slider!(symbol_period, rate);
-                    // Frequency of the BPSK can go from 0 to 20kHz
-                    ui.add(egui::Slider::new(freq, 0.0..=20000.0).text("BPSK Frequency"));
+            macro_rules! sync_and_expected_bytes {
+                ($sync: ident, $acc_distance: ident, $exp: ident) => {
                     ui.label("Sync symbols");
                     let sync_symbols_changing =
                         ui.add(egui::TextEdit::singleline(&mut self.string_sync_symbols));
@@ -119,17 +112,56 @@ impl eframe::App for Gui {
                             .map(|s| s.parse::<usize>())
                             .collect();
                         if let Ok(res) = parsing_sync_symbols {
-                            *sync_symbols = res;
+                            *$sync = res;
                         }
                     }
+
+                    ui.label("Number of symbols, used by random sync signal");
+                    ui.add(egui::DragValue::new(&mut self.n_symbols_in_modulation));
+                    ui.label("Number of symbols in the sync signal");
+                    ui.add(egui::DragValue::new(&mut self.n_symbols_in_sync_signal));
+                    if ui.button("use random sync signal").clicked() {
+                        use rand_distr::{Distribution, Uniform};
+                        let unifomr = Uniform::new(0, self.n_symbols_in_modulation);
+
+                        *$sync = vec![];
+                        for _ in 0..self.n_symbols_in_sync_signal {
+                            $sync.push(unifomr.sample(&mut rand::thread_rng()))
+                        }
+
+                        self.string_sync_symbols = $sync
+                            .iter()
+                            .map(|v| format!("{},", v.to_string()))
+                            .collect();
+                        self.string_sync_symbols.pop();
+                    }
+
                     ui.add(
-                        egui::Slider::new(acceptance_sync_distance, 0.0..=0.3)
+                        egui::Slider::new($acc_distance, 0.0..=0.3)
                             .text("Sync signal distance acceptance"),
                     );
-                    ui.add(egui::Checkbox::new(
-                        use_expected_bytes,
-                        "Number expected bytes",
-                    ));
+                    ui.add(egui::Checkbox::new($exp, "Number expected bytes"));
+                };
+            }
+
+            match &mut self.modulation {
+                AvaiableModulation::BPSK {
+                    ref mut symbol_period,
+                    ref mut rate,
+                    ref mut freq,
+                    ref mut sync_symbols,
+                    ref mut acceptance_sync_distance,
+                    ref mut use_expected_bytes,
+                } => {
+                    s_period_and_rate_slider!(symbol_period, rate);
+                    // Frequency of the BPSK can go from 0 to 20kHz
+                    ui.add(egui::Slider::new(freq, 0.0..=20000.0).text("BPSK Frequency"));
+
+                    sync_and_expected_bytes!(
+                        sync_symbols,
+                        acceptance_sync_distance,
+                        use_expected_bytes
+                    );
                 }
                 AvaiableModulation::MQAM {
                     ref mut symbol_period,
@@ -146,34 +178,11 @@ impl eframe::App for Gui {
                         egui::Slider::new(m, 4..=256)
                             .text("Number of symbols, must be an even power of two"),
                     );
-                    ui.add(egui::Checkbox::new(
-                        use_expected_bytes,
-                        "Number expected bytes",
-                    ));
-
-                    ui.label("Sync symbols");
-                    let sync_symbols_changing =
-                        ui.add(egui::TextEdit::singleline(&mut self.string_sync_symbols));
-                    if sync_symbols_changing.changed() {
-                        //.expect("unexpected sync symbol")
-                        let parsing_sync_symbols: Result<Vec<usize>, _> = self
-                            .string_sync_symbols
-                            .as_str()
-                            .split(",")
-                            .map(|s| s.parse::<usize>())
-                            .collect();
-                        if let Ok(res) = parsing_sync_symbols {
-                            *sync_symbols = res;
-                        }
-                    }
-                    ui.add(
-                        egui::Slider::new(acceptance_sync_distance, 0.0..=0.3)
-                            .text("Sync signal distance acceptance"),
+                    sync_and_expected_bytes!(
+                        sync_symbols,
+                        acceptance_sync_distance,
+                        use_expected_bytes
                     );
-                    ui.add(egui::Checkbox::new(
-                        use_expected_bytes,
-                        "Number expected bytes",
-                    ));
                 }
             };
 

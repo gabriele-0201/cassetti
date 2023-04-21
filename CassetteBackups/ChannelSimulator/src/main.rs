@@ -1,3 +1,4 @@
+mod cassette_simulator;
 mod channel_simulation;
 mod gui;
 
@@ -30,6 +31,8 @@ fn main() {
         Box::new(|_cc| Box::new(gui::Gui::new(bytes))),
     )
     .expect("Something went wrong in the window")
+
+    //cassette_simulator::pipewire_test();
 }
 
 // This struct will be used to provide EVERY information to the

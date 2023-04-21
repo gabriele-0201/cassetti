@@ -14,3 +14,5 @@ hound = "3.5.0"
 rand = "0.8.5"
 rand_distr = "0.4.3"
 eframe = "0.21.3"
+
+pipewire = "0.6.0"

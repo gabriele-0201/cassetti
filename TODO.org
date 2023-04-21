@@ -27,21 +27,24 @@
 [x] correct MQAM SNR
 
 ** low level priority:
-[ ] Adjust ModDemod trait
 
-[ ] adjust Signal abstraction REALLY think about this!
+[\] Adjust ModDemod trait (more or less)
+
+[ ] adjust Signal abstraction
 
 [ ] refactor GUI
 
-[ ] Little gui to specify witch type of symbols are accepted (to being able to define the sync one)
+[NO] Little gui to specify witch type of symbols are accepted (to being able to define the sync one) -> this is very hard to implement due to modulation abstraction
 
-[ ] define random sync symbol
+[x] define random sync symbol
+    [ ] maybe a refactro
 
 [ ] accept aplitude of Htx
 
 [ ] Read from file + textbox where write stuff
 
 [ ] create button to convert signals to wav
+
 [ ] create button to save file
 
 
@@ -55,3 +58,42 @@
 How you can use CALF: (doable but extremely complex)
 + hand made -> just using helvum and manually redirect the stuff every time
 + automated -> utilizing the depency 'pipewire' I should be able to every time cpal spawn a new output or input stream this will be attecched to CALF
+
+*** Things that should be done:
+
+1. play and rec NOTHING, just hear the noise and understand the variance
+2. not let the Energy of the modulation CHANGE -> play and rec -> see BER
+3. plot BER - SNR
+
+PROBLEM:
+1. How can I attach the output of the to calf's input?
+2. How can I attach calf output to the rec?
+
+*** NOTES:
+
+Everything in pipewire is an object, Types: Node, Link, Port
+
+A node is like an 'App' and than every NODE can have multiple Port, they are like
+STREAMS of input or output (with two possible directions)
+-> Link is an oject that represent a connection beween two port (one input and one output)
+
+Every object seems to have an independent ID (unrelated with NodeId, PortId or LinkId I guess)
+
+thorugh the registry is possible to remove or add this object, those are usable through
+
+Seems to be possible, If I have just to create link I do NOT care about anything else, why?
+objects (as links) should autodestroy if the port is destroyed
+if this is real than the ONLY thing that I have to do is just to:
++ get id of port input and output of the tape simulator
++ every time the CassetteSimulator player spawn -> create a link between this port and the TapeInput
++ every time the CassetteSimulator recorder spawn -> create a link between this port and the TapeOutput
+
+PROBLEM -> I'm not sure how I can mage a simultanusly play and REC but the only thing to do is just try
+
+TODO:
+[ ] create link on cassette play spawn with Calf IN
+[ ] create link on cassette rec spawn with Calf OUT
+[ ] Audio Abstraction layer on Channel Simulator
+[ ] 2 parallel thred for play and rec
+[ ] define logic to evaluate NOISE of the channel
+[ ] create real SNR plot (with fixed noise variance but different Es)
